@@ -8,3 +8,4 @@ __pycache__/
 models/
 embeddings/
 data/
+*.csv
