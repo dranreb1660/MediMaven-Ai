@@ -7,5 +7,11 @@ __pycache__/
 .DS_Store
 models/
 embeddings/
+<<<<<<< HEAD
 data/
 *.csv
+=======
+*.csv
+data/raw
+data/processed
+>>>>>>> d4ae92b (Re-added files after adjustments)
