@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+streamlit
+transformers
+datasets
+faiss-cpu
+pandas
+numpy
+scikit-learn
+scipy
+matplotlib
+seaborn
+xgboost
+wandb
+torch
+sentence-transformers
+scikit-learn
