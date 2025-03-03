@@ -5,22 +5,41 @@ import seaborn as sns
 
 from wordcloud import WordCloud
 import missingno as msno
+from pymongo import MongoClient
+from datetime import datetime, UTC
 
 # Define file paths for processed data and visualizations
 viz_path = './data/logs/'
 data_path_processed = "./data/processed/"
 
-def load_data(file_path):
-    """
-    Load CSV data from the specified file path.
-    
-    Args:
-        file_path (str): Path to the CSV file.
-    
-    Returns:
-        pd.DataFrame: Loaded DataFrame.
-    """
-    return pd.read_csv(file_path)
+# MongoDB Connection
+client = MongoClient("mongodb://localhost:27017/")
+db = client["medimaven_db"]
+raw_qa_collection = db["qa_master_raw"]
+processed_qa_collection = db['qa_master_processed']
+
+
+import os
+import subprocess
+
+def ensure_mongodb_running():
+    """Checks if MongoDB is running, and starts it if not."""
+    try:
+        # Try connecting to MongoDB
+        subprocess.run(["mongosh", "--eval", "db.runCommand({ ping: 1 })"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        print("✅ MongoDB is already running.")
+    except subprocess.CalledProcessError:
+        print("⚠️ MongoDB is NOT running. Attempting to start it...")
+        os.system("brew services start mongodb-community")
+        print("✅ MongoDB is running")
+
+
+def load_data_from_mongo():
+    """Fetch medical Q&A data from MongoDB and load it into a pandas DataFrame."""
+    cursor = raw_qa_collection.find({}, {"_id": 0})  # Exclude _id for cleaner output
+    df = pd.DataFrame(list(cursor))
+    print(df)
+    return df
 
 def print_overview(df):
     """
@@ -264,7 +283,7 @@ def main():
     Main function to perform the full EDA on the qa_master dataset.
     """
     # Load the processed dataset
-    df = load_data(data_path_processed + 'qa_master.csv')
+    df = load_data_from_mongo()
     
     # Print basic overview of the dataset
     print_overview(df)
@@ -293,8 +312,20 @@ def main():
     # Plot a heatmap showing correlation between question and answer lengths
     plot_correlation(df_cleaned, viz_path)
     
-    # Save the cleaned DataFrame to a new CSV file
-    df_cleaned.to_csv(data_path_processed + 'qa_master_processed.csv', index=False)
+    records = df_cleaned.to_dict(orient="records")
+
+    for record in records:
+      record["tags"] = []  # Optional: You can generate tags if needed
+      record["created_at"] = datetime.now(UTC)
+      record["updated_at"] = datetime.now(UTC)      
+            
+
+    if records:
+      processed_qa_collection.insert_many(records)
+      print(f"Inserted {len(records)} processed medical Q&A records into MongoDB.")
+
 
 if __name__ == '__main__':
+    # Call this at the beginning of the script
+    ensure_mongodb_running()
     main()

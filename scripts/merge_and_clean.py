@@ -1,6 +1,29 @@
 import pandas as pd
 from pathlib import Path
 import re
+from pymongo import MongoClient
+from datetime import datetime, UTC
+
+# MongoDB Connection
+client = MongoClient("mongodb://localhost:27017/")
+db = client["medimaven_db"]
+medical_qa_collection = db["qa_master_raw"]
+
+
+import os
+import subprocess
+
+def ensure_mongodb_running():
+    """Checks if MongoDB is running, and starts it if not."""
+    try:
+        # Try connecting to MongoDB
+        subprocess.run(["mongosh", "--eval", "db.runCommand({ ping: 1 })"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        print("✅ MongoDB is already running.")
+    except subprocess.CalledProcessError:
+        print("⚠️ MongoDB is NOT running. Attempting to start it...")
+        os.system("brew services start mongodb-community")
+        print("✅ MongoDB is running")
+
 
 def clean_text(text):
     """
@@ -96,11 +119,23 @@ def merge_clean_datasets():
     # Drop duplicate rows based on the combination of 'question' and 'answer'
     df_combined.drop_duplicates(subset=["question", "answer"], inplace=True)
 
-    # Save the final merged DataFrame to a CSV file
-    csv_output_path = "data/processed/qa_master.csv"
-    df_combined.to_csv(csv_output_path, index=False)
-    print(f'Csv saved to {csv_output_path}')
+
+    # Convert to list of dictionaries for MongoDB insertion
+    records = df_combined.to_dict(orient="records")
+
+    for record in records:
+      record["tags"] = []  # Optional: You can generate tags if needed
+      record["created_at"] = datetime.now(UTC)
+      record["updated_at"] = datetime.now(UTC)
+    print(f'Csv saved to {csv_output_path}')        
+            
+
+    if records:
+      medical_qa_collection.insert_many(records)
+      print(f"Inserted {len(records)} medical Q&A records into MongoDB.")
 
 if __name__ == '__main__':
-    merge_clean_datasets()
+    # Call this at the beginning of the script
+  ensure_mongodb_running()
+  merge_clean_datasets()
 
