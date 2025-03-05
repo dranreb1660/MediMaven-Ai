@@ -1,0 +1,552 @@
+diff --git a/.zen/config.yaml b/.zen/config.yaml
+deleted file mode 100644
+index d6b5b84..0000000
+--- a/.zen/config.yaml
++++ /dev/null
+@@ -1,2 +0,0 @@
+-active_stack_id: 568e5287-0b2a-4071-aabd-ec3ef4e840b3
+-active_workspace_id: ba5edede-64d6-4071-a20e-006765b7327b
+diff --git a/airflow_etl/dags/medical_qa_etl_dag.py b/airflow_etl/dags/medical_qa_etl_dag.py
+deleted file mode 100644
+index d111eb4..0000000
+--- a/airflow_etl/dags/medical_qa_etl_dag.py
++++ /dev/null
+@@ -1,73 +0,0 @@
+-"""
+-medical_qa_etl_dag.py
+-A minimal Airflow DAG to demonstrate an ETL + EDA pipeline for medical Q&A data.
+-"""
+-
+-import os
+-from datetime import datetime, timedelta, UTC
+-
+-from airflow import DAG
+-from airflow.operators.python import PythonOperator
+-
+-# 1. Define your Python callables for each step
+-# Note: All datetime objects in context will be timezone-aware (UTC)
+-def extract_medquad_callable(**context):
+-    import subprocess
+-    subprocess.run(["python", "scripts/etl_medquad.py"], check=True)
+-
+-def extract_icliniq_callable(**context):
+-    import subprocess
+-    subprocess.run(["python", "scripts/etl_icliniq.py"], check=True)
+-
+-def merge_and_clean_callable(**context):
+-    import subprocess
+-    subprocess.run(["python", "scripts/merge_and_clean.py"], check=True)
+-
+-def eda_analysis_callable(**context):
+-    import subprocess
+-    subprocess.run(["python", "scripts/EDA.py"], check=True)
+-
+-# 2. Default DAG args
+-default_args = {
+-    'owner': 'airflow',
+-    'depends_on_past': False,
+-    'email_on_failure': False,
+-    'retries': 1,
+-    'retry_delay': timedelta(minutes=1),
+-    # Ensure timezone-aware execution dates
+-    'execution_timeout': timedelta(hours=1),
+-}
+-
+-# 3. Instantiate the DAG
+-with DAG(
+-    'medical_qa_etl_dag',
+-    default_args=default_args,
+-    description='ETL + EDA pipeline for Medical QA data',
+-    schedule=None,   # or '0 0 * * *' for daily
+-    start_date=datetime(2023, 1, 1, tzinfo=UTC),
+-    catchup=False
+-) as dag:
+-
+-    extract_medquad = PythonOperator(
+-        task_id='extract_medquad',
+-        python_callable=extract_medquad_callable,
+-    )
+-
+-    extract_icliniq = PythonOperator(
+-        task_id='extract_icliniq',
+-        python_callable=extract_icliniq_callable,
+-    )
+-
+-    merge_and_clean = PythonOperator(
+-        task_id='merge_and_clean',
+-        python_callable=merge_and_clean_callable,
+-    )
+-
+-    eda_analysis = PythonOperator(
+-        task_id='eda_analysis',
+-        python_callable=eda_analysis_callable,
+-    )
+-
+-    # 4. Set dependencies
+-    [extract_medquad, extract_icliniq] >> merge_and_clean >> eda_analysis
+-    print('dag run complete')
+diff --git a/notebooks/03_data_EDA.ipynb b/notebooks/03_data_EDA.ipynb
+index 0db33ec..67df952 100644
+--- a/notebooks/03_data_EDA.ipynb
++++ b/notebooks/03_data_EDA.ipynb
+@@ -1098,6 +1098,347 @@
+     "import airflow"
+    ]
+   },
++  {
++   "cell_type": "code",
++   "execution_count": null,
++   "metadata": {},
++   "outputs": [],
++   "source": []
++  },
++  {
++   "cell_type": "code",
++   "execution_count": 2,
++   "metadata": {},
++   "outputs": [
++    {
++     "name": "stdout",
++     "output_type": "stream",
++     "text": [
++      "\u001b[33mBy default, the \u001b[0m\u001b[1;36mPandasMaterializer\u001b[33m stores data as a \u001b[0m\u001b[1;36m.csv\u001b[33m file. If you want to store data more efficiently, you can install \u001b[0m\u001b[1;36mpyarrow\u001b[33m by running '\u001b[0m\u001b[1;36mpip install pyarrow\u001b[33m'. This will allow \u001b[0m\u001b[1;36mPandasMaterializer\u001b[33m to automatically store the data as a \u001b[0m\u001b[1;36m.parquet\u001b[33m file instead.\u001b[0m\n"
++     ]
++    },
++    {
++     "name": "stderr",
++     "output_type": "stream",
++     "text": [
++      "/opt/homebrew/Caskroom/miniconda/base/envs/MediMaven/lib/python3.12/site-packages/zenml/integrations/pandas/materializers/pandas_materializer.py:99: UserWarning: Could not infer format, so each element will be parsed individually, falling back to `dateutil`. To ensure parsing is consistent and as-expected, please specify a format.\n",
++      "  df = pd.read_csv(f, index_col=0, parse_dates=True)\n"
++     ]
++    },
++    {
++     "data": {
++      "text/html": [
++       "<div>\n",
++       "<style scoped>\n",
++       "    .dataframe tbody tr th:only-of-type {\n",
++       "        vertical-align: middle;\n",
++       "    }\n",
++       "\n",
++       "    .dataframe tbody tr th {\n",
++       "        vertical-align: top;\n",
++       "    }\n",
++       "\n",
++       "    .dataframe thead th {\n",
++       "        text-align: right;\n",
++       "    }\n",
++       "</style>\n",
++       "<table border=\"1\" class=\"dataframe\">\n",
++       "  <thead>\n",
++       "    <tr style=\"text-align: right;\">\n",
++       "      <th></th>\n",
++       "      <th>Dataset</th>\n",
++       "      <th>focus</th>\n",
++       "      <th>synonyms</th>\n",
++       "      <th>qtype</th>\n",
++       "      <th>question</th>\n",
++       "      <th>context</th>\n",
++       "      <th>answer</th>\n",
++       "      <th>speciality</th>\n",
++       "      <th>tags</th>\n",
++       "      <th>created_at</th>\n",
++       "      <th>updated_at</th>\n",
++       "      <th>context_length</th>\n",
++       "    </tr>\n",
++       "  </thead>\n",
++       "  <tbody>\n",
++       "    <tr>\n",
++       "      <th>0</th>\n",
++       "      <td>MedQuad</td>\n",
++       "      <td>T-cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>information</td>\n",
++       "      <td>What is are T cell immunodeficiency, congenita...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>T cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>324</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>1</th>\n",
++       "      <td>MedQuad</td>\n",
++       "      <td>T-cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>frequency</td>\n",
++       "      <td>How many people are affected by T cell immunod...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>T cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>344</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>2</th>\n",
++       "      <td>MedQuad</td>\n",
++       "      <td>T-cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>genetic changes</td>\n",
++       "      <td>What are the genetic changes related to T cell...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>T cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>352</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>3</th>\n",
++       "      <td>MedQuad</td>\n",
++       "      <td>T-cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>inheritance</td>\n",
++       "      <td>Is T cell immunodeficiency, congenital alopeci...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>This condition is inherited in an autosomal re...</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>325</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>4</th>\n",
++       "      <td>MedQuad</td>\n",
++       "      <td>T-cell immunodeficiency, congenital alopecia, ...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>treatment</td>\n",
++       "      <td>What are the treatments for T cell immunodefic...</td>\n",
++       "      <td>alymphoid cystic thymic dysgenesis,congenital ...</td>\n",
++       "      <td>These resources address the diagnosis or manag...</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>2025-03-03 03:41:54.991</td>\n",
++       "      <td>340</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>...</th>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "      <td>...</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>52006</th>\n",
++       "      <td>iCliniQ</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>I am not gaining weight. Please guide me if I ...</td>\n",
++       "      <td>Hi doctor,\\nI am 24 years old male. For the pa...</td>\n",
++       "      <td>Hello,Welcome to icliniq.com.First of all, che...</td>\n",
++       "      <td>Neurology</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>401</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>52007</th>\n",
++       "      <td>iCliniQ</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>Do I need treatment for premature ejaculation?</td>\n",
++       "      <td>Hello doctor,\\nI am 37 years old, a gynecologi...</td>\n",
++       "      <td>Hello,\\nWelcome to icliniq.com.\\nNo, it is not...</td>\n",
++       "      <td>Cardiology</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>600</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>52008</th>\n",
++       "      <td>iCliniQ</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>I had unprotected sex. What are my chances of ...</td>\n",
++       "      <td>Hello doctor,\\nI had unprotected sex with my b...</td>\n",
++       "      <td>Hi,\\nWelcome to icliniq.com.\\nPlease do not be...</td>\n",
++       "      <td>Obstetrics and Gynecology</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>653</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>52009</th>\n",
++       "      <td>iCliniQ</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>How many days after HIV do rashes appear?</td>\n",
++       "      <td>Hello doctor,\\n15 days back, I met a girl and ...</td>\n",
++       "      <td>Hello,\\nWelcome to icliniq.com. A rash is a ve...</td>\n",
++       "      <td>Dermatology</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>1221</td>\n",
++       "    </tr>\n",
++       "    <tr>\n",
++       "      <th>52010</th>\n",
++       "      <td>iCliniQ</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>NaN</td>\n",
++       "      <td>What are the treatment options for Internal He...</td>\n",
++       "      <td>Hello doctor,\\nI could feel a lump near my anu...</td>\n",
++       "      <td>Hi,\\nWelcome to icliniq.com.\\nIn this type of ...</td>\n",
++       "      <td>Medical Gastroenterology</td>\n",
++       "      <td>[]</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>2025-03-03 03:41:55.009</td>\n",
++       "      <td>531</td>\n",
++       "    </tr>\n",
++       "  </tbody>\n",
++       "</table>\n",
++       "<p>52011 rows × 12 columns</p>\n",
++       "</div>"
++      ],
++      "text/plain": [
++       "       Dataset                                              focus  \\\n",
++       "0      MedQuad  T-cell immunodeficiency, congenital alopecia, ...   \n",
++       "1      MedQuad  T-cell immunodeficiency, congenital alopecia, ...   \n",
++       "2      MedQuad  T-cell immunodeficiency, congenital alopecia, ...   \n",
++       "3      MedQuad  T-cell immunodeficiency, congenital alopecia, ...   \n",
++       "4      MedQuad  T-cell immunodeficiency, congenital alopecia, ...   \n",
++       "...        ...                                                ...   \n",
++       "52006  iCliniQ                                                NaN   \n",
++       "52007  iCliniQ                                                NaN   \n",
++       "52008  iCliniQ                                                NaN   \n",
++       "52009  iCliniQ                                                NaN   \n",
++       "52010  iCliniQ                                                NaN   \n",
++       "\n",
++       "                                                synonyms            qtype  \\\n",
++       "0      alymphoid cystic thymic dysgenesis,congenital ...      information   \n",
++       "1      alymphoid cystic thymic dysgenesis,congenital ...        frequency   \n",
++       "2      alymphoid cystic thymic dysgenesis,congenital ...  genetic changes   \n",
++       "3      alymphoid cystic thymic dysgenesis,congenital ...      inheritance   \n",
++       "4      alymphoid cystic thymic dysgenesis,congenital ...        treatment   \n",
++       "...                                                  ...              ...   \n",
++       "52006                                                NaN              NaN   \n",
++       "52007                                                NaN              NaN   \n",
++       "52008                                                NaN              NaN   \n",
++       "52009                                                NaN              NaN   \n",
++       "52010                                                NaN              NaN   \n",
++       "\n",
++       "                                                question  \\\n",
++       "0      What is are T cell immunodeficiency, congenita...   \n",
++       "1      How many people are affected by T cell immunod...   \n",
++       "2      What are the genetic changes related to T cell...   \n",
++       "3      Is T cell immunodeficiency, congenital alopeci...   \n",
++       "4      What are the treatments for T cell immunodefic...   \n",
++       "...                                                  ...   \n",
++       "52006  I am not gaining weight. Please guide me if I ...   \n",
++       "52007     Do I need treatment for premature ejaculation?   \n",
++       "52008  I had unprotected sex. What are my chances of ...   \n",
++       "52009          How many days after HIV do rashes appear?   \n",
++       "52010  What are the treatment options for Internal He...   \n",
++       "\n",
++       "                                                 context  \\\n",
++       "0      alymphoid cystic thymic dysgenesis,congenital ...   \n",
++       "1      alymphoid cystic thymic dysgenesis,congenital ...   \n",
++       "2      alymphoid cystic thymic dysgenesis,congenital ...   \n",
++       "3      alymphoid cystic thymic dysgenesis,congenital ...   \n",
++       "4      alymphoid cystic thymic dysgenesis,congenital ...   \n",
++       "...                                                  ...   \n",
++       "52006  Hi doctor,\\nI am 24 years old male. For the pa...   \n",
++       "52007  Hello doctor,\\nI am 37 years old, a gynecologi...   \n",
++       "52008  Hello doctor,\\nI had unprotected sex with my b...   \n",
++       "52009  Hello doctor,\\n15 days back, I met a girl and ...   \n",
++       "52010  Hello doctor,\\nI could feel a lump near my anu...   \n",
++       "\n",
++       "                                                  answer  \\\n",
++       "0      T cell immunodeficiency, congenital alopecia, ...   \n",
++       "1      T cell immunodeficiency, congenital alopecia, ...   \n",
++       "2      T cell immunodeficiency, congenital alopecia, ...   \n",
++       "3      This condition is inherited in an autosomal re...   \n",
++       "4      These resources address the diagnosis or manag...   \n",
++       "...                                                  ...   \n",
++       "52006  Hello,Welcome to icliniq.com.First of all, che...   \n",
++       "52007  Hello,\\nWelcome to icliniq.com.\\nNo, it is not...   \n",
++       "52008  Hi,\\nWelcome to icliniq.com.\\nPlease do not be...   \n",
++       "52009  Hello,\\nWelcome to icliniq.com. A rash is a ve...   \n",
++       "52010  Hi,\\nWelcome to icliniq.com.\\nIn this type of ...   \n",
++       "\n",
++       "                      speciality tags               created_at  \\\n",
++       "0                            NaN   []  2025-03-03 03:41:54.991   \n",
++       "1                            NaN   []  2025-03-03 03:41:54.991   \n",
++       "2                            NaN   []  2025-03-03 03:41:54.991   \n",
++       "3                            NaN   []  2025-03-03 03:41:54.991   \n",
++       "4                            NaN   []  2025-03-03 03:41:54.991   \n",
++       "...                          ...  ...                      ...   \n",
++       "52006                  Neurology   []  2025-03-03 03:41:55.009   \n",
++       "52007                 Cardiology   []  2025-03-03 03:41:55.009   \n",
++       "52008  Obstetrics and Gynecology   []  2025-03-03 03:41:55.009   \n",
++       "52009                Dermatology   []  2025-03-03 03:41:55.009   \n",
++       "52010   Medical Gastroenterology   []  2025-03-03 03:41:55.009   \n",
++       "\n",
++       "                    updated_at  context_length  \n",
++       "0      2025-03-03 03:41:54.991             324  \n",
++       "1      2025-03-03 03:41:54.991             344  \n",
++       "2      2025-03-03 03:41:54.991             352  \n",
++       "3      2025-03-03 03:41:54.991             325  \n",
++       "4      2025-03-03 03:41:54.991             340  \n",
++       "...                        ...             ...  \n",
++       "52006  2025-03-03 03:41:55.009             401  \n",
++       "52007  2025-03-03 03:41:55.009             600  \n",
++       "52008  2025-03-03 03:41:55.009             653  \n",
++       "52009  2025-03-03 03:41:55.009            1221  \n",
++       "52010  2025-03-03 03:41:55.009             531  \n",
++       "\n",
++       "[52011 rows x 12 columns]"
++      ]
++     },
++     "execution_count": 2,
++     "metadata": {},
++     "output_type": "execute_result"
++    }
++   ],
++   "source": [
++    "from zenml.client import Client\n",
++    "\n",
++    "artifact = Client().get_artifact_version(\"d47a7703-d3cd-4d0a-abd1-d4427c8c3c84\")\n",
++    "data = artifact.load()\n",
++    "data"
++   ]
++  },
+   {
+    "cell_type": "code",
+    "execution_count": null,
+@@ -1122,7 +1463,7 @@
+    "name": "python",
+    "nbconvert_exporter": "python",
+    "pygments_lexer": "ipython3",
+-   "version": "3.13.2"
++   "version": "3.12.9"
+   }
+  },
+  "nbformat": 4,
+diff --git a/pipelines/eda_pipeline.py b/pipelines/eda_pipeline.py
+index c0ae76a..f56c554 100644
+--- a/pipelines/eda_pipeline.py
++++ b/pipelines/eda_pipeline.py
+@@ -1,8 +1,8 @@
+ from zenml.pipelines import pipeline
+ from zenml.steps import step
+ import pandas as pd
+-from pymongo import MongoClient
+ from datetime import datetime, UTC
++from src.utils import ensure_mongodb_running, get_mongo_connection
+ 
+ 
+ 
+@@ -15,37 +15,23 @@ viz_path = './data/logs/'
+ data_path_processed = "./data/processed/"
+ 
+ # MongoDB Connection
+-client = MongoClient("mongodb://localhost:27017/")
+-db = client["medimaven_db"]
++db = get_mongo_connection() 
+ raw_qa_collection = db["qa_master_raw"]
+ processed_qa_collection = db['qa_master_processed']
+ 
+-def ensure_mongodb_running():
+-    """Checks if MongoDB is running, and starts it if not."""
+-    try:
+-        # Try connecting to MongoDB
+-        subprocess.run(["mongosh", "--eval", "db.runCommand({ ping: 1 })"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+-        print("✅ MongoDB is already running.")
+-    except subprocess.CalledProcessError:
+-        print("⚠️ MongoDB is NOT running. Attempting to start it...")
+-        os.system("brew services start mongodb-community")
+-        print("✅ MongoDB is running now!!!")
+-
+-
+ @step
+ def fetch_data():
+     """Load data from MongoDB into Pandas DataFrame."""
+-    cursor = processed_qa_collection.find({}, {"_id": 0})
++    cursor = raw_qa_collection.find({}, {"_id": 0})
+     df = pd.DataFrame(list(cursor))
+     return df
+ 
++
+ @step
+ def perform_eda(df: pd.DataFrame):
+     """
+     Main function to perform the full EDA on the qa_master dataset.
+     """
+-    # # Load the processed dataset
+-    # df = fetch_data()
+     
+     # Print basic overview of the dataset
+     print_overview(df)
+@@ -73,6 +59,7 @@ def perform_eda(df: pd.DataFrame):
+     
+     # Plot a heatmap showing correlation between question and answer lengths
+     plot_correlation(df_cleaned, viz_path)
++    return df_cleaned
+ 
+ 
+ @step
+@@ -96,5 +83,6 @@ def load_data(combined_df: pd.DataFrame):
+ def eda_pipeline():
+     ensure_mongodb_running()
+     df = fetch_data()
+-    perform_eda(df)
++    cleaned_df = perform_eda(df)
++    load_data(cleaned_df)
+ 
+diff --git a/pipelines/etl_pipeline.py b/pipelines/etl_pipeline.py
+index f7a24f7..5cc9551 100644
+--- a/pipelines/etl_pipeline.py
++++ b/pipelines/etl_pipeline.py
+@@ -1,15 +1,14 @@
+ import pandas as pd
+ import re
+-from pymongo import MongoClient
+ from datetime import datetime, UTC
+ from zenml.pipelines import pipeline
+ from zenml.steps import step
+ from typing import Tuple
++from src.utils import ensure_mongodb_running, get_mongo_connection
+ 
+ 
+ # MongoDB Connection
+-client = MongoClient("mongodb://localhost:27017/")
+-db = client["medimaven_db"]
++db = get_mongo_connection()
+ medical_qa_collection = db["qa_master_raw"]
+ 
+ 
+diff --git a/runs/run_etl.py b/runs/run_etl.py
+index 2d4eff2..63ffb4a 100644
+--- a/runs/run_etl.py
++++ b/runs/run_etl.py
+@@ -1,5 +1,6 @@
+ from pipelines.etl_pipeline import etl_pipeline, extract_data, transform_data, load_data
+ 
++
+ if __name__ == "__main__":
+     # Create and run the pipeline
+     etl_pipeline()

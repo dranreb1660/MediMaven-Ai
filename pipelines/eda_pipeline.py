@@ -1,8 +1,8 @@
 from zenml.pipelines import pipeline
 from zenml.steps import step
 import pandas as pd
-from pymongo import MongoClient
 from datetime import datetime, UTC
+from src.utils import ensure_mongodb_running, get_mongo_connection
 
 
 
@@ -15,37 +15,23 @@ viz_path = './data/logs/'
 data_path_processed = "./data/processed/"
 
 # MongoDB Connection
-client = MongoClient("mongodb://localhost:27017/")
-db = client["medimaven_db"]
+db = get_mongo_connection() 
 raw_qa_collection = db["qa_master_raw"]
 processed_qa_collection = db['qa_master_processed']
-
-def ensure_mongodb_running():
-    """Checks if MongoDB is running, and starts it if not."""
-    try:
-        # Try connecting to MongoDB
-        subprocess.run(["mongosh", "--eval", "db.runCommand({ ping: 1 })"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        print("✅ MongoDB is already running.")
-    except subprocess.CalledProcessError:
-        print("⚠️ MongoDB is NOT running. Attempting to start it...")
-        os.system("brew services start mongodb-community")
-        print("✅ MongoDB is running now!!!")
-
 
 @step
 def fetch_data():
     """Load data from MongoDB into Pandas DataFrame."""
-    cursor = processed_qa_collection.find({}, {"_id": 0})
+    cursor = raw_qa_collection.find({}, {"_id": 0})
     df = pd.DataFrame(list(cursor))
     return df
+
 
 @step
 def perform_eda(df: pd.DataFrame):
     """
     Main function to perform the full EDA on the qa_master dataset.
     """
-    # # Load the processed dataset
-    # df = fetch_data()
     
     # Print basic overview of the dataset
     print_overview(df)
@@ -73,6 +59,7 @@ def perform_eda(df: pd.DataFrame):
     
     # Plot a heatmap showing correlation between question and answer lengths
     plot_correlation(df_cleaned, viz_path)
+    return df_cleaned
 
 
 @step
@@ -96,5 +83,6 @@ def load_data(combined_df: pd.DataFrame):
 def eda_pipeline():
     ensure_mongodb_running()
     df = fetch_data()
-    perform_eda(df)
+    cleaned_df = perform_eda(df)
+    load_data(cleaned_df)
 

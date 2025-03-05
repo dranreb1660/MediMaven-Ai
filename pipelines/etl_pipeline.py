@@ -1,15 +1,14 @@
 import pandas as pd
 import re
-from pymongo import MongoClient
 from datetime import datetime, UTC
 from zenml.pipelines import pipeline
 from zenml.steps import step
 from typing import Tuple
+from src.utils import ensure_mongodb_running, get_mongo_connection
 
 
 # MongoDB Connection
-client = MongoClient("mongodb://localhost:27017/")
-db = client["medimaven_db"]
+db = get_mongo_connection()
 medical_qa_collection = db["qa_master_raw"]
 
 
