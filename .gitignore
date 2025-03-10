@@ -12,3 +12,4 @@ data/
 *.csv
 data/raw
 data/processed
+wandb/
