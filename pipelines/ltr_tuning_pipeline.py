@@ -128,7 +128,7 @@ def build_features(
 
 # -------------- STEP D: Train n Evaluate XGBRanker -------------- #
 
-@step
+@step(enable_cache=False)
 def train_and_eval_ranker(
     train_df: pd.DataFrame,
     eval_df: pd.DataFrame,
@@ -136,37 +136,32 @@ def train_and_eval_ranker(
     n_estimators: int,
     max_depth: int,
     ranking_objective: str = "rank:ndcg",
-    k_eval: int = 10
+    k_eval: int = 10  # Ensure this remains 10 for consistent metric naming
 ) -> float:
-    """
-    Trains XGBRanker on train_df, evaluates on eval_df, logs NDCG, 
-    returns the NDCG as the "score" for hyperparam tuning.
-    """
-
-    wandb.init(project="MediMaven-LTR", job_type="train_eval", reinit=True)
+    # Update wandb config without reinitializing the run
     wandb.config.update({
         "learning_rate": learning_rate,
         "n_estimators": n_estimators,
         "max_depth": max_depth
     })
-
-    # Sort by question_id
+    
+    print("train_and_eval_ranker: Starting training step")
+    print(f"Parameters received: learning_rate={learning_rate}, n_estimators={n_estimators}, max_depth={max_depth}")
+    
+    # Sort dataframes and compute group sizes
     train_df = train_df.sort_values("question_id")
     eval_df = eval_df.sort_values("question_id")
-
-    # Build group array for train
     train_group_sizes = train_df.groupby("question_id").size().values.tolist()
-    # Build group array for eval
     eval_group_sizes = eval_df.groupby("question_id").size().values.tolist()
-
+    
     feature_cols = ["cos_sim", "l2_dist", "context_length"]
     X_train = train_df[feature_cols].values
     y_train = train_df["label"].values
-
     X_eval = eval_df[feature_cols].values
     y_eval = eval_df["label"].values
 
-    # Train ranker
+    # Train the XGBRanker model
+    print("Fitting the XGBRanker model...")
     ranker = XGBRanker(
         objective=ranking_objective,
         learning_rate=learning_rate,
@@ -175,7 +170,6 @@ def train_and_eval_ranker(
         eval_metric="ndcg",
         tree_method="auto"
     )
-
     ranker.fit(
         X_train,
         y_train,
@@ -184,8 +178,9 @@ def train_and_eval_ranker(
         eval_group=[eval_group_sizes],
         verbose=False
     )
+    print("Model training completed.")
 
-    # Predict on eval
+    # Predict on eval set
     y_scores = ranker.predict(X_eval)
 
     # Compute NDCG@k per query
@@ -200,11 +195,15 @@ def train_and_eval_ranker(
         start = end
 
     mean_ndcg = float(np.mean(ndcg_list))
-    wandb.log({f"eval_ndcg@{k_eval}": mean_ndcg})
-    wandb.finish()
+    print(f"Computed mean NDCG@{k_eval}: {mean_ndcg}")
 
-    # Return the metric so that we can use it in W&B Sweeps
+    # Log the final metric under the expected name
+    wandb.log({f"eval_ndcg@{k_eval}": mean_ndcg})
+    print("Metric logged to W&B.")
+
+    # Return the metric so that the sweep agent registers the run as complete
     return mean_ndcg
+
 
 # ---------- TUNING PIPELINE DEFINITION ----------
 

@@ -1,6 +1,6 @@
 project: MediMaven-LTR
 program: runs/05_run_ltr_sweep.py
-method: bayes
+method: grid
 metric:
   name: eval_ndcg@10
   goal: maximize
