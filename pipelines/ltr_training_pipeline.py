@@ -25,297 +25,160 @@ This pipeline demonstrates:
   - Weights & Biases integration for experiment tracking.
 """
 
+# final_pipeline.py
+
 import os
 import json
-import wandb
+import shutil
 import numpy as np
 import pandas as pd
-from typing import Tuple, List, Any
+from math import log2
+import wandb
 
+from typing import Tuple, Dict, Any, List
+from xgboost import XGBRanker
 from zenml.pipelines import pipeline
 from zenml.steps import step
-from pymongo import MongoClient
-from sklearn.model_selection import train_test_split
-from xgboost import XGBRanker
 
-# Utility: ensures Mongo is running, returns a db handle
-from src.utils import get_mongo_connection, ensure_mongodb_running
-
-# -------------- HELPER: Cosine Similarity & L2 Distance -------------- #
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    dot_val = np.dot(a, b)
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    return dot_val / (norm_a * norm_b + 1e-9)
-
-def l2_distance(a: np.ndarray, b: np.ndarray) -> float:
-    return np.linalg.norm(a - b)
-
-# -------------- STEP A: Fetch LTR Data from Mongo -------------- #
+from src.utils import compute_ndcg_at_k
+from pipelines.ltr_tuning_pipeline import (
+    fetch_ltr_data, split_train_test, build_features
+)
 
 @step
-def fetch_ltr_data(
-    collection_name: str = "ltr_emb_dataset"
-) -> pd.DataFrame:
-    """
-    Reads the LTR dataset from MongoDB, which already contains:
-      question, context, label, question_id, context_id,
-      question_embedding, context_embedding, etc.
-
-    Expects each row to represent (question, context) pair with label=1 or 0.
-    We have (1) positive for each question, (2) negatives, etc.
-
-    Returns:
-      DataFrame with the necessary columns.
-    """
-    ensure_mongodb_running()
-    db = get_mongo_connection()
-    collection = db[collection_name]
-
-    data = list(collection.find({}, {'_id': 0}))
-    df = pd.DataFrame(data)
-
-    # Basic cleaning
-    df.dropna(subset=["question", "context", "question_embeddings", "context_embeddings", "label"], inplace=True)
-    df.drop_duplicates(subset=["question_id", "context_id"], inplace=True)
-
-    print(f"Fetched {len(df)} rows from '{collection_name}'")
-    return df
-
-# -------------- STEP B: Split Train / Test -------------- #
-
-@step
-def split_train_test(
-    df: pd.DataFrame,
-    test_size: float = 0.2,
-    random_seed: int = 42
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Splits the dataset into train/test. In ranking scenarios, we often
-    group by question. Here we do a simple row-based split. For large
-    production systems, consider grouping or stratified approaches.
-
-    Returns: (train_df, test_df)
-    """
-    train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_seed)
-    print(f"Train set: {len(train_df)} rows, Test set: {len(test_df)} rows")
-    return train_df, test_df
-
-# -------------- STEP C: Build Features -------------- #
-
-@step
-def build_features(
-    df: pd.DataFrame
-) -> pd.DataFrame:
-    """
-    Uses question_embedding/context_embedding to generate numeric features:
-      - cos_sim
-      - l2_dist
-      - (optionally) text length, domain signals, etc.
-
-    Output columns:
-      question_id, context_id, label, cos_sim, l2_dist, ...
-    """
-    df = df.copy()
-
-    # Convert stored embeddings from list to np array (if they aren't already)
-    # We'll produce a final DataFrame with columns for numeric features + label
-    cos_sims = []
-    l2_dists = []
-    context_lengths = []
-
-    for idx, row in df.iterrows():
-        q_emb = np.array(row["question_embeddings"], dtype=np.float32)
-        c_emb = np.array(row["context_embeddings"], dtype=np.float32)
-
-        cos_sims.append(cosine_similarity(q_emb, c_emb))
-        l2_dists.append(l2_distance(q_emb, c_emb))
-        context_lengths.append(len(str(row["context"]).split()))
-
-    df["cos_sim"] = cos_sims
-    df["l2_dist"] = l2_dists
-    df["context_length"] = context_lengths
-
-    # Return columns needed for LTR
-    # question_id, context_id, label, cos_sim, l2_dist, context_length, etc.
-    return df
-
-# -------------- STEP D: Train XGBRanker -------------- #
-
-@step
-def train_ranker(
+def merge_train_eval(
     train_df: pd.DataFrame,
-    learning_rate: float = 0.1,
-    n_estimators: int = 100,
-    ranking_objective: str = "rank:ndcg"
-) -> XGBRanker:
+    eval_df: pd.DataFrame
+) -> pd.DataFrame:
     """
-    Trains an XGBoost ranker on our numeric features, grouping by question_id.
-
-    Feature columns might be [cos_sim, l2_dist, context_length, ...].
-    Label is the binary relevance (1 or 0).
-    Groups are derived from how many rows belong to each question_id.
-
-    Returns the fitted model.
+    Combine train_df + eval_df to form one bigger training set.
     """
-    # Sort so that all rows for a question are contiguous
-    train_df = train_df.sort_values("question_id")
+    combined_df = pd.concat([train_df, eval_df], ignore_index=True)
+    # maybe drop duplicates or do any final cleaning
+    return combined_df
 
-    # Build group array for XGBoost (size of each question's doc set).
-    group_series = train_df.groupby("question_id").size()
-    group_sizes = group_series.values.tolist()
-
-    # Extract features + labels
-    feature_cols = ["cos_sim", "l2_dist", "context_length"]
-    X_train = train_df[feature_cols].values
-    y_train = train_df["label"].values
-
-    # Initialize ranker
-    ranker = XGBRanker(
-        objective=ranking_objective,
-        learning_rate=learning_rate,
-        n_estimators=n_estimators,
-        eval_metric="ndcg",
-        tree_method="auto"   # or 'gpu_hist' if you have GPU
-    )
-
-    # Train
-    ranker.fit(
-        X_train,
-        y_train,
-        group=group_sizes,
-        verbose=True
-    )
-
-    # Log hyperparams to W&B
-    wandb.init(project="MediMaven-LTR", job_type="train_ranker", reinit=True)
-    wandb.config.update({
-        "learning_rate": learning_rate,
-        "n_estimators": n_estimators,
-        "objective": ranking_objective
-    })
-
-    return ranker
-
-# -------------- NDCG Calculation -------------- #
-
-def compute_ndcg_at_k(labels: np.ndarray, scores: np.ndarray, k: int = 10) -> float:
-    """
-    Compute NDCG@k for a single query:
-      1) Sort docs by predicted score descending
-      2) Compute DCG of top-k
-      3) Compute IDCG (ideal ranking)
-      4) Return DCG/IDCG
-    """
-    from math import log2
-
-    # Sort by predicted score, descending
-    idx_sorted = np.argsort(-scores)
-    ideal_sorted = np.argsort(-labels)
-
-    dcg = 0.0
-    idcg = 0.0
-
-    for i in range(k):
-        if i < len(idx_sorted):
-            rel = labels[idx_sorted[i]]
-            dcg += (2**rel - 1) / log2(i+2)
-        if i < len(ideal_sorted):
-            ideal_rel = labels[ideal_sorted[i]]
-            idcg += (2**ideal_rel - 1) / log2(i+2)
-
-    return dcg / (idcg + 1e-9)
-
-# -------------- STEP E: Evaluate Ranker on Test Set -------------- #
-
-@step
-def evaluate_ranker(
-    model: XGBRanker,
+# ------------- STEP C: Multi-Param Final Training ------------- #
+@step(enable_cache=False)
+def train_final_ranker(
+    combined_df: pd.DataFrame,
     test_df: pd.DataFrame,
-    k_eval: int = 10
-) -> float:
+    hyperparam_list: List[Dict[str, Any]] = [
+        {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 7},
+        {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 5},
+        {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 3},
+        {"learning_rate": 0.01, "n_estimators": 100, "max_depth": 3},
+        {"learning_rate": 0.03, "n_estimators": 50, "max_depth": 3},
+    ],
+    k_eval: int = 10,
+    best_model_path: str = "./models/ltr_best_model.json"
+) -> Dict[str, Any]:
     """
-    Computes mean NDCG@k across all queries in the test set.
-
-    test_df must have question_id, label, and the numeric feature columns used in training.
-    We predict a score for each row, group by question_id, then compute NDCG@k.
-
-    Returns:
-      mean_ndcg (float)
+    Merges train+eval => final_train, then for each hyperparam in hyperparam_list:
+      1) Train XGBoost ranker on final_train
+      2) Evaluate on test_df (NDCG@k)
+      3) If best so far, save model to best_model_path, log as W&B artifact
+    Returns a dict with {best_ndcg, best_params}.
     """
+    import wandb
+    # We no longer need this check since the default is now properly set in the function signature
+
+    # Sort test for grouping
     test_df = test_df.sort_values("question_id")
+    test_groups = test_df.groupby("question_id").size().tolist()
 
-    feature_cols = ["cos_sim", "l2_dist", "context_length"]
-    X_test = test_df[feature_cols].values
-    y_true = test_df["label"].values
+    X_test = test_df[["cos_sim", "l2_dist", "context_length"]].values
+    y_test = test_df["label"].values
 
-    # Build group array
-    group_series = test_df.groupby("question_id").size()
-    group_sizes = group_series.values.tolist()
+    # We'll do a loop over hyperparam_list
+    best_ndcg = -1.0
+    best_params = None
 
-    # Predict
-    y_scores = model.predict(X_test)
+    for i, hps in enumerate(hyperparam_list, start=1):
+        lr = hps.get("learning_rate", 0.1)
+        est = hps.get("n_estimators", 100)
+        depth = hps.get("max_depth", 3)
+        run_name=f"finalRun_{i}_lr={lr}_est={est}_depth={depth}"
 
-    # Compute NDCG@k per query
-    ndcg_values = []
-    start_idx = 0
-    for size in group_sizes:
-        end_idx = start_idx + size
-        labels_group = y_true[start_idx:end_idx]
-        scores_group = y_scores[start_idx:end_idx]
 
-        ndcg_val = compute_ndcg_at_k(labels_group, scores_group, k=k_eval)
-        ndcg_values.append(ndcg_val)
-        start_idx = end_idx
+        # Train on combined_df
+        combined_df = combined_df.sort_values("question_id")
+        group_arr = combined_df.groupby("question_id").size().tolist()
 
-    mean_ndcg = float(np.mean(ndcg_values))
-    print(f"NDCG@{k_eval} on test set = {mean_ndcg:.4f}")
+        X_train = combined_df[["cos_sim", "l2_dist", "context_length"]].values
+        y_train = combined_df["label"].values
 
-    wandb.log({f"test_ndcg@{k_eval}": mean_ndcg})
-    return mean_ndcg
+        ranker = XGBRanker(
+            objective="rank:ndcg",
+            learning_rate=lr,
+            n_estimators=est,
+            max_depth=depth,
+            eval_metric="ndcg",
+            tree_method="auto"
+        )
+        ranker.fit(X_train, y_train, group=group_arr)
 
-# -------------- STEP F: Save Ranker Model -------------- #
+        # Evaluate on test
+        y_scores = ranker.predict(X_test)
+        idx = 0
+        ndcg_list = []
+        for gsize in test_groups:
+            labels_g = y_test[idx: idx+gsize]
+            scores_g = y_scores[idx: idx+gsize]
+            ndcg_val = compute_ndcg_at_k(labels_g, scores_g, k_eval)
+            ndcg_list.append(ndcg_val)
+            idx += gsize
+        mean_ndcg = float(np.mean(ndcg_list))
+        print(f"[Set {i}] NDCG@{k_eval}={mean_ndcg:.4f} for lr={lr}, est={est}, depth={depth}")
 
-@step
-def save_ranker(
-    model: XGBRanker,
-    model_save_path: str = "./models/ltr_xgboost.json"
-):
-    """
-    Saves the trained XGBRanker model to disk. 
-    In production, you could store to S3 / MLflow / other artifact store.
-    """
-    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
-    model.save_model(model_save_path)
-    print(f"✅ LTR model saved to {model_save_path}")
+        # Log run to W&B
+        #   (One approach is we do a single run for each set. Another is a single run for the entire loop.)
+        #   We'll do "one run per set" so each appears as a separate run in W&B
+        wandb.init(project="MediMaven-LTR", job_type="final_train_evaluation",name=run_name, reinit=True)
+        wandb.config.update({
+            "learning_rate": lr,
+            "n_estimators": est,
+            "max_depth": depth
+        })
+        wandb.log({f"test_ndcg@{k_eval}": mean_ndcg})
 
-    wandb.log({"model_artifact_path": model_save_path})
-    wandb.finish()
+        # If best so far, save model & log artifact
+        if mean_ndcg > best_ndcg:
+            best_ndcg = mean_ndcg
+            best_params = {"learning_rate": lr, "n_estimators": est, "max_depth": depth}
 
-# -------------- DEFINE THE ZENML PIPELINE -------------- #
+            # Save model
+            os.makedirs(os.path.dirname(best_model_path), exist_ok=True)
+            ranker.save_model(best_model_path)
+            print(f"*** New best model => saved to {best_model_path} ***")
 
+            # Log artifact
+            artifact = wandb.Artifact("best_ltr_model", type="model")
+            artifact.add_file(best_model_path)
+            wandb.log_artifact(artifact)
+
+        wandb.finish()
+
+    print(f"\nBest NDCG@{k_eval}={best_ndcg:.4f} with params={best_params}")
+    return {"best_ndcg": best_ndcg, "best_params": best_params}
+
+
+# ------------- PIPELINE DEFINITION ------------- #
 @pipeline
-def ltr_pipeline():
+def ltr_training_pipeline():
     """
-    Production-ready pipeline for Learning-to-Rank with XGBoost:
-      1. Fetch data from 'ltr_dataset' (MongoDB).
-      2. Split into train/test sets.
-      3. Build numeric features from stored embeddings (cos_sim, etc.).
-      4. Train the XGBRanker on the train set.
-      5. Evaluate with NDCG@10 on the test set.
-      6. Save the final model artifact.
-
-    This pipeline demonstrates how negative samples
-    (2 negatives, 1 positive) factor into the ranking objective,
-    grouping by question_id so each question's contexts are
-    ranked properly.
+    1) fetch_and_3split_data => train_df, eval_df, test_df
+    2) build_features => train_df, eval_df, test_df
+    3) multi_param_training => merges train+eval => final train, tries each hyperparam set on test => saves best
     """
     df = fetch_ltr_data()
-    train_df, test_df = split_train_test(df)
-    train_df = build_features(train_df)
-    test_df = build_features(test_df)
+    train_df, temp = split_train_test(df, test_size=0.4)
+    eval_df, test_df = split_train_test(temp,test_size=0.5)
 
-    model = train_ranker(train_df)
-    _ = evaluate_ranker(model, test_df)
-    save_ranker(model)
+    train_df = build_features(train_df)
+    eval_df = build_features(eval_df)
+    test_df = build_features(test_df)
+    combined_df = merge_train_eval(train_df, eval_df)
+
+
+
+    train_final_ranker(combined_df, test_df)
