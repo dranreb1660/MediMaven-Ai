@@ -1,0 +1,14 @@
+pip
+pydantic==2.8.2
+torch
+transformers
+datasets
+peft
+bitsandbytes
+trl
+pymongo==4.11.3
+colored
+zenml[server]
+pandas
+numpy
+fastapi

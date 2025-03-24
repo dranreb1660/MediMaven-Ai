@@ -3,6 +3,9 @@ import subprocess
 from pymongo import MongoClient
 import numpy as np
 
+db_uri = "mongodb+srv://dranreb1660:LUV160%40me.@cluster0.lxppn.mongodb.net/?retryWrites=true&w=majority&maxPoolSize=50&connectTimeoutMS=60000&socketTimeoutMS=120000"
+db_name = "medimaven_db"
+
 def ensure_mongodb_running():
     """Checks if MongoDB is running, and starts it if not."""
     try:
@@ -15,7 +18,7 @@ def ensure_mongodb_running():
         print("✅ MongoDB is running now!!!")
 
 
-def get_mongo_connection(mongo_uri:str = "mongodb://localhost:27017/", db_name:str = "medimaven_db"):
+def get_mongo_connection(mongo_uri:str = db_uri, db_name:str = db_name):
     client = MongoClient(mongo_uri)
     db = client[db_name]
 
@@ -62,3 +65,47 @@ def compute_ndcg_at_k(labels: np.ndarray, scores: np.ndarray, k: int = 10) -> fl
             idcg += (2**ideal_rel - 1) / log2(i+2)
 
     return dcg / (idcg + 1e-9)
+
+
+def chunk_text_by_tokens(text: str, tokenizer, max_tokens=512, overlap=256):
+    encoded = tokenizer.encode(text)
+    chunks = []
+    start = 0
+    while start < len(encoded):
+        end = start + max_tokens
+        chunk_ids = encoded[start:end]
+        chunk_text = tokenizer.decode(chunk_ids, skip_special_tokens=True)
+        chunks.append(chunk_text)
+        start += (max_tokens - overlap)
+    return chunks  
+
+
+# -------------- MongoDB Batch Operations -------------- #
+
+def insert_documents_in_batches(collection, documents, batch_size=1000):
+    """
+    Insert documents into MongoDB in batches to prevent timeouts with large datasets.
+    
+    Args:
+        collection: MongoDB collection to insert into
+        documents: List of documents to insert
+        batch_size: Number of documents per batch (default: 1000)
+    
+    Returns:
+        total_inserted: Total number of documents inserted
+    """
+    total_docs = len(documents)
+    total_inserted = 0
+    
+    print(f"Inserting {total_docs} documents in batches of {batch_size}...")
+    
+    for i in range(0, total_docs, batch_size):
+        end_idx = min(i + batch_size, total_docs)
+        batch = documents[i:end_idx]
+        if batch:
+            collection.insert_many(batch)
+            total_inserted += len(batch)
+            print(f"Inserted batch {i//batch_size + 1}: {len(batch)} documents ({total_inserted}/{total_docs})")
+    
+    print(f"✅ Successfully inserted {total_inserted} documents in {(total_docs + batch_size - 1) // batch_size} batches")
+    return total_inserted

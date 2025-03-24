@@ -170,7 +170,16 @@ def ltr_training_pipeline():
     2) build_features => train_df, eval_df, test_df
     3) multi_param_training => merges train+eval => final train, tries each hyperparam set on test => saves best
     """
-    df = fetch_ltr_data()
+    hyperparam_list= [
+    {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 7},
+    {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 5},
+    {"learning_rate": 0.1, "n_estimators": 200, "max_depth": 3},
+    {"learning_rate": 0.01, "n_estimators": 100, "max_depth": 3},
+    {"learning_rate": 0.03, "n_estimators": 50, "max_depth": 3},
+]
+    ltr_collection_name =  "ltr_emb_dataset"
+
+    df = fetch_ltr_data(ltr_collection_name)
     train_df, temp = split_train_test(df, test_size=0.4)
     eval_df, test_df = split_train_test(temp,test_size=0.5)
 
@@ -179,6 +188,8 @@ def ltr_training_pipeline():
     test_df = build_features(test_df)
     combined_df = merge_train_eval(train_df, eval_df)
 
-
-
-    train_final_ranker(combined_df, test_df)
+    train_final_ranker(
+        combined_df, 
+        test_df,
+        hyperparam_list = hyperparam_list
+    )

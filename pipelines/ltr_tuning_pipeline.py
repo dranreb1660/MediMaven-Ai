@@ -41,7 +41,7 @@ from src.utils import (get_mongo_connection, ensure_mongodb_running,
 
 @step
 def fetch_ltr_data(
-    collection_name: str = "ltr_emb_dataset"
+    collection_name: str,
 ) -> pd.DataFrame:
     """
     Reads the LTR dataset from MongoDB, which already contains:
@@ -215,7 +215,8 @@ def tuning_pipeline(run_name: str = None, parameters: dict = None):
         run_name: Name for the pipeline run
         parameters: Dictionary of parameters for pipeline steps
     """
-    df = fetch_ltr_data()
+    ltr_collection_name =  "ltr_emb_dataset"
+    df = fetch_ltr_data(ltr_collection_name)
     train_df, temp = split_train_test(df, test_size=0.4)
     eval_df, test_df = split_train_test(temp,test_size=0.5)
 

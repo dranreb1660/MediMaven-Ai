@@ -20,7 +20,6 @@ from pymongo import MongoClient
 
 from src.utils import get_mongo_connection, ensure_mongodb_running
 
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
 
 ensure_mongodb_running()
 db = get_mongo_connection()
@@ -134,7 +133,7 @@ def chunk_llm_docs(df: pd.DataFrame, model_name: str) -> pd.DataFrame:
 def generate_embeddings(
     llm_df: pd.DataFrame,
     ltr_df: pd.DataFrame,
-    model_name = 'sentence-transformers/all-MiniLM-L6-v2',
+    model_name : str,
     batch_size: int = 32,
     device_name: str = "mps"
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -193,7 +192,7 @@ def generate_embeddings(
 @step
 def build_faiss_index(
     df: pd.DataFrame,
-    index_save_path: str = "./models/faiss_index.bin"
+    index_save_path: str,
 ) -> faiss.Index:
     """
     Step D: Build a FAISS index from the embeddings and save it to disk.
@@ -300,8 +299,8 @@ def store_and_log_emb_results(
     ltr_docs = convert_numpy_to_list(ltr_docs)
     llm_docs = convert_numpy_to_list(llm_docs)
     
-    ltr_collection.insert_many(ltr_docs)
-    llm_collection.insert_many(llm_docs)
+    # ltr_collection.insert_many(ltr_docs)
+    # llm_collection.insert_many(llm_docs)
     print("✅ LTR and LLM datasets inserted into MongoDB")
 
     # Optionally log to W&B
@@ -342,13 +341,17 @@ def embedding_pipeline():
     """
     # Initialize wandb run inside the pipeline function
     # wandb.init(project="MediMaven-Embedding", job_type="embedding_pipeline", reinit=True)
+    llm_collection = 'qa_master_processed'
+    ltr_collection = 'ltr_dataset'
+    model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    fais_idx_path = "./models/faiss_index.bin"
 
     try:
-        llm_df, ltr_df = fetch_llm_ltr_data('qa_master_processed','ltr_dataset' )
+        llm_df, ltr_df = fetch_llm_ltr_data(llm_collection, ltr_collection)
         llm_df = chunk_llm_docs(llm_df, model_name=model_name)    
 
-        llm_df, ltr_df = generate_embeddings(llm_df, ltr_df)
-        build_faiss_index(llm_df)
+        llm_df, ltr_df = generate_embeddings(llm_df, ltr_df, model_name, batch_size=32)
+        build_faiss_index(llm_df, fais_idx_path)
         store_and_log_emb_results(ltr_df, llm_df)
     finally:
         # Always make sure to finish the run, even if there's an exception

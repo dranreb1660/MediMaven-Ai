@@ -20,7 +20,7 @@ from pymongo import MongoClient
 
 import wandb
 
-from src.utils import ensure_mongodb_running, get_mongo_connection
+from src.utils import ensure_mongodb_running, get_mongo_connection, insert_documents_in_batches
 
 # ------------------ STEP A ------------------ #
 @step
@@ -223,15 +223,15 @@ def store_and_log_results(
     ltr_docs = convert_numpy_to_list(ltr_docs)
     llm_docs = convert_numpy_to_list(llm_docs)
     
-    ltr_collection.insert_many(ltr_docs)
-    llm_collection.insert_many(llm_docs)
+    insert_documents_in_batches(ltr_collection, ltr_docs, batch_size=5000)
+    # insert_documents_in_batches(llm_collection, llm_docs)
     print("✅ LTR and LLM datasets inserted into MongoDB")
 
     # Optionally log to W&B
     if log_wandb:
         data = [ltr_df, llm_df]
         names = ["ltr_df", "llm_df"]
-        run = wandb.init(project="MediMaven-DataPrep", job_type="neg_sampling")
+        run = wandb.init(project="MediMaven-ltr-DataPrep", job_type="neg_sampling")
         # Log data as W&B Tables
         ltr_table = wandb.Table(dataframe=ltr_df)
         llm_table = wandb.Table(dataframe=llm_df)
