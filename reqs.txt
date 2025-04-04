@@ -12,3 +12,7 @@ zenml[server]
 pandas
 numpy
 fastapi
+faiss-cpu
+weave
+zenml
+gptqmodel

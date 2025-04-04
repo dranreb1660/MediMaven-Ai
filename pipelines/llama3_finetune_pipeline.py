@@ -1,6 +1,6 @@
 # pipelines/llama2_finetune_pipeline.py
 
-import os, time
+import os, time,math
 import wandb
 import torch
 import pandas as pd
@@ -23,6 +23,7 @@ from zenml.pipelines import pipeline
 from src.utils import chunk_text_by_tokens, get_mongo_connection
 from zenml.materializers.base_materializer import BaseMaterializer
 from datasets import Dataset
+from tqdm.auto import tqdm
 
 # -----------------------------------------------------------------
 #  Database connection (not changed)
@@ -51,16 +52,18 @@ def fetch_finetune_data(
 #   STEP 2: Chunk Large Contexts
 # --------------------------------------------------------------
 @step
-def chunk_llm_docs(df: pd.DataFrame, base_model_name) -> pd.DataFrame:
+def chunk_llm_docs(df: pd.DataFrame, base_model_name, tokenizer=None) -> pd.DataFrame:
     start_time = time.time()
-    _, tokenizer = create_model_and_tokenizer(base_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
 
     all_rows = []
     for _, row in df.iterrows():
         original_text = row["context"]
         # Overlap chunking: 512 max tokens, 256 stride
         chunked_texts = chunk_text_by_tokens(original_text, tokenizer,
-                                             max_tokens=512, overlap=256)
+                                             max_tokens=512, overlap=50)
         for idx, chunk in enumerate(chunked_texts):
             new_row = row.copy()
             new_row["context"] = chunk
@@ -70,7 +73,7 @@ def chunk_llm_docs(df: pd.DataFrame, base_model_name) -> pd.DataFrame:
     elapsed = time.time() - start_time
     print(f'Chunking took {elapsed:.2f} sec, produced {len(all_rows)} rows.')
 
-    wandb.init(project="MediMaven-LLM_finetuning",
+    wandb.init(project="MediMaven-LLM-Finetuning",
                job_type="llm_finetune_pipeline",
                reinit=True)
     wandb.log({
@@ -78,7 +81,6 @@ def chunk_llm_docs(df: pd.DataFrame, base_model_name) -> pd.DataFrame:
         "num_new_docs": len(all_rows),
         "chunking_time_sec": elapsed
     })
-    wandb.finish()
 
     return pd.DataFrame(all_rows)
 
@@ -112,8 +114,9 @@ def prepare_instruction_text(df: pd.DataFrame) -> pd.DataFrame:
 @step
 def tokenize_data(
     df: pd.DataFrame,
+    max_length: int,
     base_model_name: str,
-    max_length: int
+    tokenizer = None
 ) -> Dataset:
     """
     Tokenizes the instruction text + answer for Causal LM.
@@ -121,8 +124,10 @@ def tokenize_data(
     if df.empty:
         raise ValueError("Input DataFrame is empty")
         
-    _, tokenizer = create_model_and_tokenizer(base_model_name)
-    
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"  
+        
     def build_full_text(example):
         return example["instruction_text"] + " " + example["answer"]
 
@@ -150,6 +155,7 @@ def tokenize_data(
             raise ValueError("Tokenization failed - input_ids not found in dataset")
         
         print(f"Tokenization successful. Dataset size: {len(ds)}")
+        print(ds[0])
         return ds
     except Exception as e:
         raise ValueError(f"Failed to tokenize data: {str(e)}")
@@ -203,6 +209,7 @@ def create_model_and_tokenizer(MODEL_NAME: str):
         use_safetensors=True,
         quantization_config=bnb_config,
         trust_remote_code=True,
+        attn_implementation="flash_attention_2",
         device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
@@ -214,7 +221,7 @@ def create_model_and_tokenizer(MODEL_NAME: str):
 # --------------------------------------------------------------
 #   STEP 5: Train Model with Basic Param Tuning
 # --------------------------------------------------------------
-@step(enable_cache=False)
+@step(enable_cache=True)
 def train_model(
     base_model_name: str,
     split_ds: Dict[str, Any],
@@ -222,9 +229,10 @@ def train_model(
     output_dir: str = "./models/llama_finetuned",
     # We will do a mini param search:
     lr: float = 5e-5,
-    lora_r: int= 32,
+    lora_r: int= 16,
     epochs: int = 2,
 ) -> str:
+    
     """
     Fine-tunes the Llama model with QLoRA, doing a simple loop over
     different (lr, lora_r) combos. Logs each run to W&B, picks the best.
@@ -254,17 +262,17 @@ def train_model(
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
     lora_config = LoraConfig(
         r=lora_r,
-        lora_alpha=64,
+        lora_alpha=32,
         lora_dropout=0.05,
         target_modules=[
             "self_attn.q_proj",
             "self_attn.k_proj",
             "self_attn.v_proj",
             "self_attn.o_proj",
-            "mlp.gate_proj",
-            "mlp.up_proj",
-            "mlp.down_proj",
-        ],
+            # "mlp.gate_proj",
+            # "mlp.up_proj",
+            # "mlp.down_proj", 
+            ],
         bias="none",
         task_type="CAUSAL_LM",
     )
@@ -274,13 +282,14 @@ def train_model(
     sft_config = SFTConfig(
         output_dir=output_dir,
         max_seq_length=max_len,
-        per_device_train_batch_size=2,
-        per_device_eval_batch_size=2,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=14,
+        per_device_eval_batch_size=14,
+        gradient_accumulation_steps=6,
         optim="paged_adamw_8bit",
         eval_strategy="steps",
+        eval_steps=500,
         save_strategy="epoch",
-        logging_steps=1000,
+        logging_steps=100,
         learning_rate=lr,
         bf16=True,
         num_train_epochs=epochs,
@@ -292,11 +301,10 @@ def train_model(
         seed=42
     )
 
-    wandb.init(
-        project="MediMaven-LLM-Finetuning",
-        job_type="finetune",
-        name=f"llama_finetune_{run_name}",
-        reinit=True
+    wandb.init(resume="auto",
+        # project="MediMaven-LLM-Finetuning",
+        # job_type="finetune",
+        # name=f"llama_finetune_{run_name}",
     )
     trainer = SFTTrainer(
         model=model_lora,
@@ -327,69 +335,240 @@ def train_model(
 # --------------------------------------------------------------
 #   STEP 6: Merge & Evaluate on Held-Out Test
 # --------------------------------------------------------------
-@step
-def merge_and_evaluate(
-    best_model_path: str,
-    base_model_name: str,
-    heldout_ds
-) -> float:
-    """
-    1) Load base model + LoRA adapter from best_model_path,
-       merge them into a single set of weights.
-    2) Evaluate perplexity on the held-out test set (never used in training or val).
-    3) Optionally push to HF Hub or store locally for production usage.
-    """
-    import wandb
-    from peft import PeftModel
+import torch
+# import math
+from tqdm.auto import tqdm
 
-    heldout_ds = heldout_ds["test"]
-    # 1) Load base model
+def parse_prompt_and_answer(text: str) -> (str, str):
+    """
+    Splits the text at '[/INST]' to separate the prompt portion from the answer.
+    Example input:
+        "[INST] question context [/INST] some answer text"
+    Returns:
+        prompt_str: "[INST] question context [/INST]"
+        answer_str: "some answer text"
+    """
+    marker = "[/INST]"
+    idx = text.find(marker)
+    if idx == -1:
+        # If there's no [/INST], treat the entire text as prompt (edge case).
+        return text, ""
+    prompt_str = text[: idx + len(marker)]
+    answer_str = text[idx + len(marker) :]
+    return prompt_str.strip(), answer_str.strip()
+
+def evaluate_in_batches(
+    model,
+    dataset,
+    tokenizer,
+    batch_size=8,
+    max_new_tokens=300,
+    device="cuda"
+):
+    """
+    Evaluate a model's "answer perplexity" on a large dataset where each example
+    contains "[INST] prompt [/INST] answer" in its 'input_ids'.
+
+    *Batched approach*:
+      1) We decode to find prompt vs. answer, but feed only the *prompt* to
+         `model.generate()` (no answer leak).
+      2) We compute perplexity on the *answer* portion only by masking prompt tokens.
+
+    Returns:
+        ppl: A float perplexity measuring how well the model predicts the answer.
+        logs: A list of example logs with {prompt, prediction, ground_truth, loss}.
+    """
+    model.eval()
+    model.to(device)
+    
+    logs = []
+    total_loss = 0.0
+    total_samples = 0
+
+    # Iterate in mini-batches
+    for start_idx in tqdm(range(0, len(dataset), batch_size), desc="Evaluating"):
+        end_idx = start_idx + batch_size
+        # NOTE: Slicing a HF Dataset returns a dict of columns, each a list
+        batch_slice = dataset[start_idx:end_idx]
+
+        # Extract the 'input_ids' list (size: <= batch_size)
+        input_ids_batch = batch_slice["input_ids"]
+
+        # --- 1) For each sample, decode, split into prompt vs. answer. ---
+        prompts, answers = [], []
+        for ids in input_ids_batch:
+            full_text = tokenizer.decode(ids, skip_special_tokens=False)
+            full_text = full_text.replace("<|eot_id|>", "")
+            prompt_str, answer_str = parse_prompt_and_answer(full_text)
+            prompts.append(prompt_str)
+            answers.append(answer_str)
+
+        # --- 2) Generate from prompt-only ---
+        prompt_enc = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=1024
+        ).to(device)
+
+        with torch.no_grad():
+            pred_ids = model.generate(
+                input_ids=prompt_enc["input_ids"],
+                attention_mask=prompt_enc["attention_mask"],
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=0.7
+            )
+        predictions = [
+            tokenizer.decode(g, skip_special_tokens=True)
+            for g in pred_ids
+        ]
+        predictions = [
+            parse_prompt_and_answer(g)[1]  # extract answer portion
+            for g in predictions
+        ]
+
+        # --- 3) Compute answer-only perplexity by masking prompt tokens ---
+        # Re-tokenize full text: prompt + answer
+        full_enc = tokenizer(
+            [p + " " + a for p, a in zip(prompts, answers)],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=1024
+        ).to(device)
+
+        # Also tokenize *just* the prompt to find how many tokens to mask
+        prompt_only_enc = tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=1024
+        ).to(device)
+
+        labels = full_enc["input_ids"].clone()
+        for i_row in range(labels.size(0)):
+            # number of tokens in the prompt
+            prompt_len = prompt_only_enc["attention_mask"][i_row].sum().item()
+            # mask out the prompt portion
+            labels[i_row, :int(prompt_len)] = -100
+
+        with torch.no_grad():
+            outputs = model(
+                input_ids=full_enc["input_ids"],
+                attention_mask=full_enc["attention_mask"],
+                labels=labels
+            )
+        batch_loss = outputs.loss.item()  # average over all unmasked tokens in the batch
+
+        # Weighted accumulation: multiply avg loss by number of samples
+        num_in_batch = len(prompts)
+        total_loss += batch_loss * num_in_batch
+        total_samples += num_in_batch
+
+        # --- 4) Log a few examples for debugging ---
+        # We'll log 2 examples each batch or so
+        if len(logs) < 2 * ((start_idx // batch_size) + 1):
+            for i_log in range(min(2, num_in_batch)):
+                logs.append({
+                    "prompt": prompts[i_log],
+                    "prediction": predictions[i_log],
+                    "ground_truth": answers[i_log],
+                    "loss": batch_loss
+                })
+
+        # 7. Memory cleanup
+        del full_enc, labels, predictions, outputs
+        torch.cuda.empty_cache()
+
+
+    # --- 5) Final perplexity across dataset (answer tokens only) ---
+    avg_loss = total_loss / total_samples if total_samples > 0 else float("inf")
+    ppl = math.exp(avg_loss) if avg_loss < 100 else float("inf")
+
+    return ppl, logs
+
+@step
+def merge_and_evaluate(base_model_name: str, heldout_ds: Dict[str, Any], best_model_path: str = "models/llama_finetuned") -> float:
+    """End-to-end merge, evaluate, and save in 4-bit"""
+    from transformers import BitsAndBytesConfig
+    import torch
+
+    # Initialize W&B
+    wandb.init(project="MediMaven-LLM-Finetuning", 
+               job_type="merge_eval",
+               reinit=True)
+
+    # 1. Configure 4-bit from the start
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        llm_int8_skip_modules=["lm_head"]  # Keep output layer precise
+    )
+
+    # 2. Load base model in 4-bit directly
+    print("\nLoading base model in 4-bit...")
     base_model = AutoModelForCausalLM.from_pretrained(
         base_model_name,
+        quantization_config=bnb_config,
         device_map="auto",
-        trust_remote_code=True
+        low_cpu_mem_usage=True
     )
-    # 2) Load LoRA and merge
+
+    # 3. Load LoRA adapter
+    print("Loading LoRA adapter...")
     lora_model = PeftModel.from_pretrained(
         base_model,
         best_model_path,
-        device_map="auto",
+        device_map="auto"
     )
-    merged_model = lora_model.merge_and_unload()
-    # Now merged_model has all weights, no need to load LoRA again.
 
-    # Save or push to Hugging Face (commented out – example usage only):
-    # merged_model.push_to_hub("YourUser/YourMergedModelName")
+    # 4. Merge weights (automatically stays 4-bit)
+    print("Merging LoRA weights...")
+    merged_model = lora_model.merge_and_unload(
+        progressbar=True,
+        safe_merge=True
+    )
+    
+    # Load tokenizer
+    _, tokenizer = create_model_and_tokenizer(base_model_name)
+    
+    # 5. Evaluate with memory-safe batch size
+    print("Running batched evaluation...")
 
-    # Evaluate perplexity on held-out set
-    merged_model.eval()
-
-    test_losses = []
-    for example in heldout_ds:
-        input_ids = torch.tensor(example["input_ids"]).unsqueeze(0)
-        input_ids = input_ids.to(merged_model.device)
-        with torch.no_grad():
-            outputs = merged_model(input_ids, labels=input_ids)
-        test_losses.append(outputs.loss.item())
-
-    avg_loss = sum(test_losses) / len(test_losses)
-    ppl = float(torch.exp(torch.tensor(avg_loss)))
-    print(f"Held-Out Test Perplexity: {ppl:.3f}")
-
-    # Optionally log to W&B
-    wandb.init(project="MediMaven-LLM-Finetuning",
-               job_type="merge_and_eval",
-               name="final_heldout_eval",
-               reinit=True)
-    wandb.log({"heldout_ppl": ppl})
-    wandb.finish()
-
+    heldout_subset = heldout_ds["test"].shuffle(seed=42).select(range(1000))
+    ppl, example_logs = evaluate_in_batches(
+        model=merged_model,
+        dataset=heldout_subset,
+        tokenizer=tokenizer,
+        batch_size=26 # Lower batch size for memory safety
+    )
+    
+    # 6. Save models (4-bit config is preserved)
+    print("Saving final 4-bit model...")
+    merged_model.save_pretrained(
+        "./models/merged_4bit",
+        safe_serialization=True,
+        max_shard_size="2GB"
+    )
+    
+    # 7. Optional: Save FP16 version for reference
+    # merged_model.to(torch.float16).save_pretrained("./models/merged_fp16")
+    
+    wandb.log({
+        "perplexity": ppl,
+        "examples": wandb.Table(dataframe=pd.DataFrame(example_logs))
+    })
+    
     return ppl
-
 # --------------------------------------------------------------
 #   PIPELINE DEFINITION
 # --------------------------------------------------------------
-@pipeline  # Disable caching temporarily for debugging
+@pipeline(enable_cache=True)  # Disable caching temporarily for debugging
 def llama3_finetuning_pipeline():
     MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
     output_dir = "./models/llama_finetuned"
@@ -413,21 +592,27 @@ def llama3_finetuning_pipeline():
     split_ds = split_dataset(tokenized_ds)
 
     # 6) Train
-    best_model_dir = train_model(
-        base_model_name=MODEL_NAME,
-        split_ds=split_ds,
-        max_len=max_len,
-        output_dir=output_dir,
-        lr=5e-5,
-        lora_r=32,
-        epochs=2
-    )
+    # best_model_dir = train_model(
+    #     base_model_name=MODEL_NAME,
+    #     split_ds=split_ds,
+    #     max_len=max_len,
+    #     output_dir=output_dir,
+    #     lr=5e-5,
+    #     lora_r=32,
+    #     epochs=2
+    # )
+    # best_model_dir = "models/llama_finetuned"
     
     # 7) Merge & Evaluate
     merge_and_evaluate(
-        best_model_path=best_model_dir,
+        # best_model_path=best_model_dir,
         base_model_name=MODEL_NAME,
         heldout_ds=split_ds
     )
     
     print("\n=== Pipeline Completed ===")
+
+
+
+
+     

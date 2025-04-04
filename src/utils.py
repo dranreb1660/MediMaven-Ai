@@ -109,3 +109,33 @@ def insert_documents_in_batches(collection, documents, batch_size=1000):
     
     print(f"✅ Successfully inserted {total_inserted} documents in {(total_docs + batch_size - 1) // batch_size} batches")
     return total_inserted
+
+
+import torch
+
+def get_device():
+    """
+    Get the most suitable device for PyTorch operations with proper error handling.
+    Returns: torch.device
+    """
+    try:
+        # Stage 1: Check for CUDA (NVIDIA GPU)
+        if torch.cuda.is_available():
+            device = 'cuda'
+            print(f"Using CUDA (NVIDIA GPU): {torch.cuda.get_device_name(0)}")
+            return device
+        
+        # Stage 2: Check for Apple Silicon GPU (MPS)
+        if torch.backends.mps.is_available(): 
+            device = "mps"
+            print("Using Apple Silicon GPU (MPS)")
+            return device
+        
+        # Stage 3: Fall back to CPU
+        device = 'cpu'
+        print("Using CPU")
+        return device
+        
+    except Exception as e:
+        print(f"Error detecting device, falling back to CPU: {str(e)}")
+        return torch.device("cpu")
