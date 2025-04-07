@@ -6,15 +6,20 @@ import wandb
 from src.backend.app.schemas import ChatRequest, ChatResponse
 from src.backend.services.rag_service import RAGService
 from pipelines.rag_inference_pipeline import MedicalRAGSystem
+import torch
 
 from src.backend.app.config import config
+print("📟 Torch device:", torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+print("🔥 CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("🚀 CUDA device:", torch.cuda.get_device_name(0))
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
 
 @app.on_event("startup")
 def init_wandb():
-    wandb.init(project="medical-rag", config={
+    wandb.init(project="medical-rag-production", config={
         "model": config.MODEL_PATH,
         "faiss_index": config.FAISS_INDEX_PATH
     })

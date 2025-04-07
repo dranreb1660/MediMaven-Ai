@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  tgi:
+    image: ghcr.io/huggingface/text-generation-inference:latest
+    command: --model-id /data/llama_finetuned/gptqmodel_4bit --quantize gptq
+    ports:
+      - "8080:80"
+    volumes:
+      - ./models:/data:ro  # make it read-only
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+
+  rag-api:
+    runtime: nvidia  # 👈 Optional for some systems
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro  # mount model separately if needed inside app
+    environment:
+      - TGI_API_URL=http://tgi:80
+      - WANDB_API_KEY=0e7613d70774bd853ddb2dc316968c77437977be
+      - HF_TOKEN=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
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+
+    depends_on:
+      - tgi

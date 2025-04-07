@@ -139,3 +139,8 @@ def get_device():
     except Exception as e:
         print(f"Error detecting device, falling back to CPU: {str(e)}")
         return torch.device("cpu")
+
+def clean_response(text: str) -> str:
+    if "." in text:
+        return text[:text.rfind(".")+1]  # cut off at last full stop
+    return text  # fallback if no period found

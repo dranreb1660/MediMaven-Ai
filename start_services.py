@@ -13,7 +13,8 @@ seed_everything(SEED)
 
 # Login to the Hugging Face Hub
 huggingface_hub.login(
-  token="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", # ADD YOUR TOKEN HERE
-  add_to_git_credential=True
+  token=os.getenv("HF_TOKEN"), # ADD YOUR TOKEN HERE
+  add_to_git_credential=False
 )
-wandb.login(key=WANDB_KEY)
+wandb.login(key=os.getenv("WANDB_API_KEY"), relogin=True)
+# wandb.login(key=WANDB_KEY)

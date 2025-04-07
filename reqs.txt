@@ -1,6 +1,5 @@
 pip
 pydantic==2.8.2
-torch
 transformers
 datasets
 peft
@@ -10,9 +9,13 @@ pymongo==4.11.3
 colored
 zenml[server]
 pandas
-numpy
+numpy==1.26.4
 fastapi
 faiss-cpu
 weave
 zenml
-gptqmodel
+sentence-transformers
+uvicorn
+requests
+xgboost
+python-dotenv

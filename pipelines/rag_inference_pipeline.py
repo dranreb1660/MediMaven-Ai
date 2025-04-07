@@ -11,89 +11,69 @@ from typing import List, Dict, Any, Optional
 # Torch imports
 import torch
 from sentence_transformers import SentenceTransformer
-from gptqmodel import GPTQModel
 
 # Other imports
 import weave
-from src.utils import get_mongo_connection, cosine_similarity, l2_distance, get_device
+from src.utils import get_mongo_connection, cosine_similarity, l2_distance, get_device, clean_response
 from zenml import step, pipeline
+import requests
 
 # Initialize monitoring tools
 weave.init("medical-rag-production")
-# mlflow.set_tracking_uri("http://localhost:5000")
 
 class MedicalRAGSystem:
-    """End-to-end medical QA RAG system with monitoring and fallback handling."""
-    
-    def __init__(self, faiss_index_path: str = "./models/faiss_index.bin",
-            metadata_path: str = "./models/faiss_index_data.json",
-            ltr_model_path: str = "./models/ltr_best_model.json",
-            llm_path: str = "./models/llama_finetuned/gptqmodel_4bit",
-            embed_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-            device = get_device()):
-        
-            self.device = device
-       
-            # Initialize embedding model with fallback
-            try:
-                self.embed_model = SentenceTransformer(embed_model_name, device=self.device)
-            except Exception as e:
-                print(f"Error loading embedding model on {self.device}, falling back to CPU: {str(e)}")
-                self.device = torch.device("cpu")
-                self.embed_model = SentenceTransformer(embed_model_name, device="cpu")
-            
-            # Load retrieval components
-            self.retriever = faiss.read_index(faiss_index_path)
-            with open(metadata_path, "rb") as f:
-                self.metadata = json.load(f)
-            self.ranker = xgb.XGBRanker()
-            self.ranker.load_model(ltr_model_path)
-            
-            # Load LLM with memory management
-            try:
-                gc.collect()
-                if self.device== "mps":
-                    torch.mps.empty_cache()
-                elif self.device.startswith("cuda"):
-                    torch.cuda.empty_cache()
-                
-                self.llm = GPTQModel.load(llm_path, device=self.device)
-                self.tokenizer = self.llm.tokenizer
-            except (RuntimeError, MemoryError) as e:
-                print(f"Memory error loading LLM on {self.device}, falling back to CPU: {str(e)}")
-                gc.collect()
-                self.llm = GPTQModel.load(llm_path, device="cpu")
-                self.tokenizer = self.llm.tokenizer
-            
-            # Initialize monitoring
-            self.db = get_mongo_connection()
-            
-  
-    # ---- Pipeline Steps ----
+    """End-to-end medical QA RAG system using TGI and monitoring."""
+
+    def __init__(
+        self,
+        faiss_index_path: str = "./models/faiss_index.bin",
+        metadata_path: str = "./models/faiss_index_data.json",
+        ltr_model_path: str = "./models/ltr_best_model.json",
+        embed_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        tgi_url: str = os.getenv("TGI_API_URL", "http://localhost:8080"),
+        device=get_device(),
+    ):
+        self.device = device
+        self.tgi_url = tgi_url
+
+        try:
+            self.embed_model = SentenceTransformer(embed_model_name, device=self.device)
+        except Exception as e:
+            print(f"Error loading embedding model on {self.device}, falling back to CPU: {str(e)}")
+            self.device = torch.device("cpu")
+            self.embed_model = SentenceTransformer(embed_model_name, device="cpu")
+
+        self.retriever = faiss.read_index(faiss_index_path)
+        with open(metadata_path, "rb") as f:
+            self.metadata = json.load(f)
+        self.ranker = xgb.XGBRanker()
+        self.ranker.load_model(ltr_model_path)
+        self.db = get_mongo_connection()
+
     def embed_query(self, query: str) -> np.ndarray:
-        """Embed a query using the configured model."""
         return self.embed_model.encode(query, convert_to_numpy=True)
 
     @weave.op()
     def retrieve(self, query_emb: np.ndarray, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Retrieve documents from FAISS index."""
         distances, indices = self.retriever.search(np.expand_dims(query_emb, 0), top_k)
-        return [   { 'doc_id': idx,
-                    "context_id": self.metadata[idx]["context_id"],
-                    "score": score,
-                    "context": self.metadata[idx]["context"]} 
-                    for score, idx in zip(distances[0], indices[0])]
+        return [
+            {
+                'doc_id': idx,
+                "context_id": self.metadata[idx]["context_id"],
+                "score": score,
+                "context": self.metadata[idx]["context"],
+            }
+            for score, idx in zip(distances[0], indices[0])
+        ]
 
     @weave.op()
     def rerank(self, query_embedding, docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Re-rank documents using XGBoost LTR model."""
-        # Feature engineering (customize based on your LTR training)        
         docs_embeddings = [self.embed_query(query=doc['context']) for doc in docs]
         cosims = [cosine_similarity(query_embedding, doc_emb) for doc_emb in docs_embeddings]
         l2s = [l2_distance(query_embedding, doc_emb) for doc_emb in docs_embeddings]
         lens = [len(doc['context'].split()) for doc in docs]
         features = np.array([cosims, l2s, lens]).T
-        
+
         scores = self.ranker.predict(features)
         for doc, score in zip(docs, scores):
             doc["ltr_score"] = float(score)
@@ -101,92 +81,50 @@ class MedicalRAGSystem:
 
     @weave.op()
     def generate(self, query: str, context_docs: List[Dict[str, Any]]) -> str:
-        """Generate answer using fine-tuned LLM."""
         try:
-            # Clean memory before generation
-            if self.device == "mps" or self.device.startswith("cuda"):
-                if self.device == "mps":
-                    torch.mps.empty_cache()
-                elif self.device.startswith("cuda"):
-                    torch.cuda.empty_cache()
-                
-            context = "\n\n".join(d["context"] for d in context_docs[:3])  
-            def build_prompt(query: str, context: str) -> str:
-                sys_msg = (
-                    "You are a helpful medical AI assistant. "
-                    "Provide clear and concise answers based on the given question with the help of given context."
-                    "the answer is after the [/INST] tag so generate and summerize evrything after the [/INST] tag"
-                )
+            context = "\n\n".join(d["context"] for d in context_docs[:3])
 
-                # Example format for Llama instructions:
-                prompt = (
-                    f"[INST] <<SYS>>\n{sys_msg}\n<<SYS>>\n"
-                    f"Question: {query}\n"
-                    f"Context: {context}\n"
-                    "[/INST]"
-                )
-                return prompt
-            prompt = build_prompt(query, context)
+            sys_msg = (
+                "You are a helpful medical AI assistant. Provide clear and concise answers based on the given question with the help of given context. "
+                "The answer is after the [/INST] tag so generate and summarize everything after the [/INST] tag."
+            )
 
-            # Manage memory during tokenization and generation
-            with torch.no_grad():
-                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-                output = self.llm.generate(
-                    **inputs,
-                    max_new_tokens=256,
-                    temperature=0.7,
-                    do_sample=True
-                )
-                response = self.tokenizer.decode(output[0], skip_special_tokens=True)
-            
-            # Clear memory after generation
-            del inputs, output
-            gc.collect()
-            if self.device == "mps" or self.device.startswith("cuda"):
-                if self.device == "mps":
-                    torch.mps.empty_cache()
-                elif self.device.startswith("cuda"):
-                    torch.cuda.empty_cache()
-                
-            return response.split("[/INST]")[-1].strip()
-            
-        except RuntimeError as e:
-            if "out of memory" in str(e).lower() or "not enough memory" in str(e).lower():
-                # Memory-specific error handling
-                print(f"Memory error during generation: {str(e)}")
-                gc.collect()
-                if self.device == "mps" or self.device.startswith("cuda"):
-                    if self.device == "mps":
-                        torch.mps.empty_cache()
-                    elif self.device.startswith("cuda"):
-                        torch.cuda.empty_cache()
-                
-                # Try again with CPU if not already on CPU
-                if self.device != "cpu":
-                    print("Falling back to CPU for this generation")
-                    # Move model to CPU temporarily for this generation
-                    with torch.no_grad():
-                        cpu_inputs = self.tokenizer(prompt, return_tensors="pt")
-                        # Process on CPU
-                        tmp_model = self.llm.to("cpu")
-                        cpu_output = tmp_model.generate(
-                            **cpu_inputs,
-                            max_new_tokens=128,  # Reduced tokens for safety
-                            temperature=0.7,
-                            do_sample=True
-                        )
-                        response = self.tokenizer.decode(cpu_output[0], skip_special_tokens=True)
-                        # Move model back to original device
-                        self.llm.to(self.device)
-                        del tmp_model, cpu_inputs, cpu_output
-                        gc.collect()
-                        return response.split("[/INST]")[-1].strip()
-            
-            # Re-raise other errors
-            raise
+            prompt = f"[INST] <<SYS>>\n{sys_msg}\n<<SYS>>\nQuestion: {query}\nContext: {context}\n[/INST]"
+
+            payload = {
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 256,
+                    "do_sample": True,
+                    "temperature": 0.7,
+                    "stop": ["<|eot_id|>"]
+                }
+            }
+            start_time = time.time()
+            response = requests.post(f"{self.tgi_url}/generate", json=payload, timeout=60)
+            latency = time.time() - start_time
+
+            if response.status_code == 200:
+                text = clean_response(response.json().get("generated_text", ""))
+                print(f"TGI response latency: {latency:.2f}s")
+            else:
+                raise ValueError(f"TGI error: {response.status_code}, {response.text}")
+
+            self.cleanup_memory()
+            return text.strip()
+
+        except Exception as e:
+            print(f"Generation error: {e}")
+            self.cleanup_memory()
+            return "[ERROR] LLM generation failed."
+
+    def cleanup_memory(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
     def log_to_db(self, query: str, answer: str, docs: List[Dict[str, Any]]):
-        """Store results in MongoDB with timestamp."""
         def convert_numpy_types(obj):
             if isinstance(obj, np.integer):
                 return int(obj)
@@ -199,55 +137,33 @@ class MedicalRAGSystem:
             elif isinstance(obj, list):
                 return [convert_numpy_types(item) for item in obj]
             return obj
-        
-        # Convert numpy types to Python native types
+
         converted_docs = [convert_numpy_types(doc) for doc in docs]
-        
         try:
             self.db["rag_inference_logs"].insert_one({
                 "query": query,
                 "answer": answer,
                 "top_docs": converted_docs,
-                "timestamp": time.time()
+                "timestamp": time.time(),
             })
         except Exception as e:
             print(f"Warning: Failed to log to database: {e}")
 
-    # ---- End-to-End Pipeline ----
     def run(self, query: str) -> str:
-        """Execute full RAG pipeline with monitoring and fallbacks."""
         try:
-            # Embed
             query_emb = self.embed_query(query)
-            
-            # Retrieve
             retrieved_docs = self.retrieve(query_emb)
             if not retrieved_docs:
                 raise ValueError("No documents retrieved")
-            
-            # Rerank
+
             ranked_docs = self.rerank(query_emb, retrieved_docs)
-            
-            # Generate
             answer = self.generate(query, ranked_docs)
-            
-            # Log
             self.log_to_db(query, answer, ranked_docs[:3])
-            
             return answer
-        
+
         except Exception as e:
-            # Fallback to a safe response
-            # weave.log({"error": str(e)})
-            print(f'error occured and caught ==>:  {e}')
-            
-            # Clean up memory in case of errors
-            gc.collect()
-            if self.device == "mps":
-                torch.mps.empty_cache()
-            elif self.device.startswith("cuda"):
-                torch.cuda.empty_cache()
-                
+            print(f"Error in pipeline: {e}")
+            self.cleanup_memory()
             return "I encountered an error processing your medical query. Please try again later."
 
 # --- ZenML Integration ---
