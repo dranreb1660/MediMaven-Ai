@@ -24,26 +24,34 @@ def init_wandb():
         "faiss_index": config.FAISS_INDEX_PATH
     })
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     start_time = time.time()
     try:
         # rag = RAGService.get_instance()
         rag = MedicalRAGSystem(
-                # llm_path=config.MODEL_PATH,
-                # faiss_index_path=config.FAISS_INDEX_PATH
+            faiss_index_path = config.faiss_index_path,
+            metadata_path= config.metadata_path,
+            ltr_model_path = config.ltr_model_path,
+            embed_model_name = config.EMBED_MODEL_NAME,
+            ############## TGI URL ##############
+            tgi_url = os.getenv("TGI_API_URL", "http://localhost:8080")
             )
         answer = rag.run(request.query)
         
         wandb.log({
             "query": request.query,
-            "latency_ms": (time.time() - start_time) * 1000,
+            "latency": f'{(time.time() - start_time)}s',
             "answer_length": len(answer)
         })
         
         return {
             "answer": answer,
-            "latency_ms": round((time.time() - start_time) * 1000, 2),
+            "latency": round((time.time() - start_time), 2),
             "model_version": os.path.basename(config.MODEL_PATH)
         }
     except Exception as e:

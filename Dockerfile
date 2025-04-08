@@ -26,7 +26,6 @@ COPY reqs.txt .
 RUN pip install --no-cache-dir -r reqs.txt
 RUN pip install --no-cache-dir torch torchvision torchaudio
 
-
 # Install your local model package last (less caching likely)
 RUN pip install -v gptqmodel --no-build-isolation
 

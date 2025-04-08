@@ -9,7 +9,11 @@ models/
 embeddings/
 data/
 *.csv
-*.csv
 data/raw
 data/processed
 wandb/
+.env/
+*.db
+.zen
+.gdrive_cred.json
+*.sh

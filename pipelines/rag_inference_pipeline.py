@@ -26,11 +26,11 @@ class MedicalRAGSystem:
 
     def __init__(
         self,
-        faiss_index_path: str = "./models/faiss_index.bin",
-        metadata_path: str = "./models/faiss_index_data.json",
-        ltr_model_path: str = "./models/ltr_best_model.json",
-        embed_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        tgi_url: str = os.getenv("TGI_API_URL", "http://localhost:8080"),
+        faiss_index_path: str,
+        metadata_path: str,
+        ltr_model_path: str ,
+        embed_model_name: str,
+        tgi_url: str,
         device=get_device(),
     ):
         self.device = device

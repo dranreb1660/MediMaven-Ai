@@ -5,5 +5,5 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    latency_ms: float
+    latency: float
     model_version: str

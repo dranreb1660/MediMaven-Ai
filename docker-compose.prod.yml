@@ -18,9 +18,7 @@ services:
               capabilities: [gpu]
 
   rag-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: phade160/medimaven-rag-api:v1.0.0
     ports:
       - "8000:8000"
     volumes:
