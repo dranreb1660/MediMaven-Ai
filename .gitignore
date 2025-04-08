@@ -10,9 +10,9 @@ embeddings/
 data/
 *.csv
 data/raw
-data/processed
+data/*
 wandb/
-.env/
+.env
 *.db
 .zen
 .gdrive_cred.json
