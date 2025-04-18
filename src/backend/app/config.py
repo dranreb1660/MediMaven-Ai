@@ -1,5 +1,12 @@
 from pydantic_settings import BaseSettings
 from pathlib import Path
+import os
+# from dotenv import load_dotenv
+# load_dotenv()
+# -------------- CONFIGURATION -------------- #
+# This file contains the configuration for the Medical RAG system.
+# It uses Pydantic for settings management and environment variable loading.
+#
 
 class AppConfig(BaseSettings):
     # Raw environment values (relative paths from project root)
@@ -13,7 +20,7 @@ class AppConfig(BaseSettings):
     WANDB_API_KEY: str
     NVIDIA_VISIBLE_DEVICES: str = "all"
     CUDA_VISIBLE_DEVICES: str = "0"
-    TGI_API_URL: str = "http://tgi:80"
+    TGI_API_URL: str = os.getenv("TGI_API_URL", "http://localhost:8080")
 
     class Config:
         env_file = ".env"

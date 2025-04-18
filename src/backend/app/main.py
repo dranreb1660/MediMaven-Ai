@@ -39,7 +39,7 @@ async def chat(request: ChatRequest):
             ltr_model_path = config.ltr_model_path,
             embed_model_name = config.EMBED_MODEL_NAME,
             ############## TGI URL ##############
-            tgi_url = os.getenv("TGI_API_URL", "http://localhost:8080")
+            tgi_url = config.TGI_API_URL
             )
         answer = rag.run(request.query)
         

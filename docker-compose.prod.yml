@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   tgi:
     image: ghcr.io/huggingface/text-generation-inference:latest
@@ -7,9 +5,16 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./models:/data:ro
+      - medimaven_volume:/data:ro
+    networks:
+      - medimaven-network
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
     deploy:
       resources:
         reservations:
@@ -22,10 +27,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models:ro
+      - medimaven_volume:/app/models:ro
+    networks:
+      - medimaven-network
+    environment:
+      - TGI_API_URL=http://tgi:80
     env_file:
       - .env
-    runtime: nvidia
     depends_on:
       - tgi
     deploy:
@@ -34,3 +42,21 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5m
+      timeout: 120s
+      retries: 5
+
+networks:
+  medimaven-network:
+    driver: bridge
+
+
+volumes:
+  medimaven_volume:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./models

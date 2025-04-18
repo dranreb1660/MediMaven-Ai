@@ -101,7 +101,7 @@ class MedicalRAGSystem:
                 }
             }
             start_time = time.time()
-            response = requests.post(f"{self.tgi_url}/generate", json=payload, timeout=60)
+            response = requests.post(f"{self.tgi_url}/generate", json=payload, timeout=120)
             latency = time.time() - start_time
 
             if response.status_code == 200:

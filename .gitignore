@@ -16,4 +16,10 @@ wandb/
 *.db
 .zen
 .gdrive_cred.json
-*.sh
+frontend/
+*.ipynb
+clooudflared
+
+/mount_gdrive.sh
+/setup_colab.sh
+/cloudflared

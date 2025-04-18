@@ -1,7 +1,6 @@
 import wandb, huggingface_hub, os, torch, numpy as np
 
-HF_TOKEN =  "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"
-WANDB_KEY = "0e7613d70774bd853ddb2dc316968c77437977be"
+
 SEED = 42
 def seed_everything(seed: int):
     os.environ["PYTHONHASHSEED"] = str(seed)
