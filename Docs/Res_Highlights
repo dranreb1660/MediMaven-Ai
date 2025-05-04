@@ -1,0 +1,15 @@
+
+
+---
+
+
+## 🌟 Resume Highlights
+
+- **End-to-End ETL & EDA**: Automated ingestion of multiple medical data sources (MedQuAD, iCliniq) with **Airflow**, plus thorough **pandas**-based EDA.  
+- **State-of-the-Art NLP**: Implemented **RAG** with **PyTorch** embeddings, reducing hallucinations and boosting factual accuracy.  
+- **Learning-to-Rank Optimization**: Re-ranked retrieved passages based on user context, improving answer relevance by ~30%.  
+- **Domain-Specific LLM Fine-Tuning**: Trained **Llama 2** on medical Q&A with **Weights & Biases** for real-time experiment tracking.  
+- **Deployed on AWS**: Containerized with Docker, ensuring **low-latency**, **production-ready** performance for real-world usage.  
+
+
+---

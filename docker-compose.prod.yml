@@ -2,6 +2,7 @@ services:
   tgi:
     image: ghcr.io/huggingface/text-generation-inference:latest
     command: --model-id /data/llama_finetuned/gptqmodel_4bit --quantize gptq
+    restart: always 
     ports:
       - "8080:80"
     volumes:
@@ -15,15 +16,24 @@ services:
       interval: 60s
       timeout: 30s
       retries: 5
+
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /medimaven/containers
+        awslogs-region: us-east-1
+        awslogs-create-group: "true"
+
     deploy:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              capabilities: [gpu]
+          - driver: nvidia
+            capabilities: [gpu]
 
   rag-api:
     image: phade160/medimaven-rag-api:v1.0.0
+    restart: always
     ports:
       - "8000:8000"
     volumes:
@@ -36,6 +46,12 @@ services:
       - .env
     depends_on:
       - tgi
+    logging:
+      driver: awslogs
+      options:
+        awslogs-group: /medimaven/containers
+        awslogs-region: us-east-1
+        awslogs-create-group: "true"
     deploy:
       resources:
         reservations:
