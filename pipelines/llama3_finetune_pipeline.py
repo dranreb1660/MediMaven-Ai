@@ -20,7 +20,7 @@ from trl import SFTTrainer, SFTConfig, DataCollatorForCompletionOnlyLM
 from zenml.steps import step
 from zenml.pipelines import pipeline
 
-from src.utils import chunk_text_by_tokens, get_mongo_connection
+from src.backend.utils import chunk_text_by_tokens, get_mongo_connection
 from zenml.materializers.base_materializer import BaseMaterializer
 from datasets import Dataset
 from tqdm.auto import tqdm

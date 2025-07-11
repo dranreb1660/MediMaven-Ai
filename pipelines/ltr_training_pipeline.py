@@ -40,7 +40,7 @@ from xgboost import XGBRanker
 from zenml.pipelines import pipeline
 from zenml.steps import step
 
-from src.utils import compute_ndcg_at_k
+from src.backend.utils import compute_ndcg_at_k
 from pipelines.ltr_tuning_pipeline import (
     fetch_ltr_data, split_train_test, build_features
 )

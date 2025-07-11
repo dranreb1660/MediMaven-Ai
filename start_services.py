@@ -1,19 +1,23 @@
-import wandb, huggingface_hub, os, torch, numpy as np
+import os, wandb, huggingface_hub, torch, numpy as np
 
+# Seed everything for reproducibility
+np.random.seed(42)
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
 
-SEED = 42
-def seed_everything(seed: int):
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-seed_everything(SEED)
+# HF login for private weights / rate limits (optional)
+if os.getenv("HF_TOKEN"):
+  print("🔑 Logging into Hugging Face Hub...")
+  huggingface_hub.login(
+      token=os.getenv("HF_TOKEN"),
+      add_to_git_credential=False,
+  )
+else:
+  print("ℹ️  No HF_TOKEN - using public access")
 
-
-# Login to the Hugging Face Hub
-huggingface_hub.login(
-  token=os.getenv("HF_TOKEN"), # ADD YOUR TOKEN HERE
-  add_to_git_credential=False
-)
-wandb.login(key=os.getenv("WANDB_API_KEY"), relogin=True)
-# wandb.login(key=WANDB_KEY)
+if os.getenv("WANDB_API_KEY"):
+  print("🔑 Logging into Weights & Biases...")
+  wandb.login(key=os.getenv("WANDB_API_KEY"), relogin=True)
+else:
+  print("ℹ️  No WANDB_API_KEY - monitoring disabled")

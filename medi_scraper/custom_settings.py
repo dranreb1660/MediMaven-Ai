@@ -1,0 +1,11 @@
+# Custom settings for more reliable scraping
+custom_settings = {
+    "SPLASH_TIMEOUT": 180,
+    "CONCURRENT_REQUESTS": 4,
+    "CONCURRENT_REQUESTS_PER_DOMAIN": 2,
+    "DOWNLOAD_DELAY": 1,
+    "AUTOTHROTTLE_ENABLED": True,
+    "AUTOTHROTTLE_START_DELAY": 2,
+    "AUTOTHROTTLE_MAX_DELAY": 10,
+    "AUTOTHROTTLE_TARGET_CONCURRENCY": 1.0,
+}

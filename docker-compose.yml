@@ -1,68 +1,29 @@
-services:
-  tgi:
-    image: ghcr.io/huggingface/text-generation-inference:latest
-    command: --model-id /data/llama_finetuned/gptqmodel_4bit --quantize gptq
-    ports:
-      - "8080:80"
-    volumes:
-      - medimaven_volume:/data:ro
-    networks:
-      - medimaven-network
-    env_file:
-      - .env
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: [gpu]
+version: "3.9"
 
+services:
   rag-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
+    image: medimaven/rag-api:1.1.0
+    container_name: medimaven-api
+    restart: unless-stopped
     ports:
       - "8000:8000"
-    volumes:
-      - medimaven_volume:/app/models:ro
-    networks:
-      - medimaven-network
     environment:
-      - TGI_API_URL=http://tgi:80
-    env_file:
-      - .env
-    depends_on:
-      - tgi
+      - HF_TOKEN=${HF_TOKEN}
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - ENABLE_MONITORING=True
+      - ENABLE_CACHING=True
+      # - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - medimaven_models:/app/models   # persists weights between restarts
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
+              count: 1
               capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5m
-      timeout: 120s
-      retries: 5
-
-networks:
-  medimaven-network:
-    driver: bridge
-
 
 volumes:
-  medimaven_volume:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./models
-
-
-
+  medimaven_models:
 

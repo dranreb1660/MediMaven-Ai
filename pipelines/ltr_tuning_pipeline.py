@@ -33,7 +33,7 @@ from sklearn.model_selection import train_test_split
 from xgboost import XGBRanker
 
 # Utility: ensures Mongo is running, returns a db handle
-from src.utils import (get_mongo_connection, ensure_mongodb_running,
+from src.backend.utils import (get_mongo_connection, ensure_mongodb_running,
           cosine_similarity,l2_distance, compute_ndcg_at_k )
 
 

@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer
 from pymongo import MongoClient
 
 
-from src.utils import get_mongo_connection, ensure_mongodb_running
+from src.backend.utils import get_mongo_connection, ensure_mongodb_running
 
 
 ensure_mongodb_running()

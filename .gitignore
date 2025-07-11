@@ -18,8 +18,14 @@ wandb/
 .gdrive_cred.json
 frontend/
 *.ipynb
-clooudflared
+cloudflared
 
-/mount_gdrive.sh
+./mount_gdrive.sh
 /setup_colab.sh
-/cloudflared
+./cloudflared
+
+/medimaven-qa-data
+Resume_Docs
+notebooks/v1.1/08_rag_inference.ipynb
+.dockerignore
+*.tsv

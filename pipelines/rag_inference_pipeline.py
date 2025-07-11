@@ -14,7 +14,7 @@ from sentence_transformers import SentenceTransformer
 
 # Other imports
 import weave
-from src.utils import get_mongo_connection, cosine_similarity, l2_distance, get_device, clean_response
+from src.backend.utils import get_mongo_connection, cosine_similarity, l2_distance, get_device, clean_response
 from zenml import step, pipeline
 import requests
 

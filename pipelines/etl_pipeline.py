@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 from zenml.pipelines import pipeline
 from zenml.steps import step
 from typing import Tuple
-from src.utils import ensure_mongodb_running, get_mongo_connection
+from src.backend.utils import ensure_mongodb_running, get_mongo_connection
 
 
 # MongoDB Connection

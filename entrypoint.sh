@@ -1,22 +1,27 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Check required env vars
-REQUIRED_VARS=("WANDB_API_KEY" "HF_TOKEN")
-for var in "${REQUIRED_VARS[@]}"; do
-  if [[ -z "${!var}" ]]; then
-    echo "❌ Environment variable $var not set. Exiting."
-    exit 1
-  fi
-done
-
-# Auto-download models if missing
-if [ ! -d "/app/models/llama_finetuned/gptqmodel_4bit" ]; then
-  echo "⬇️ Models missing, downloading now..."
-  bash download_models.sh
+# ─── 1) Sanity checks ────────────────────────────────────────────
+# HF_TOKEN is now optional since models are public
+if [[ -n "${HF_TOKEN:-}" ]]; then
+  echo "🔑 HF_TOKEN provided - using authenticated access"
+else
+  echo "ℹ️  No HF_TOKEN - using public access"
 fi
 
-echo "🔐 Starting auxiliary services..."
-python start_services.py
+# WANDB optional – warn only
+if [[ -z "${WANDB_API_KEY:-}" ]]; then
+  echo "⚠️  WANDB_API_KEY not set – monitoring disabled"
+fi
 
-echo "🚀 Launching FastAPI..."
-exec uvicorn src.backend.app.main:app --host 0.0.0.0 --port 8000
+# ─── 2) Download (if missing) ────────────────────────────────────
+if [ ! -d "${MODEL_DIR:-/app/models/v1.1}/llama3_8b_awq" ]; then
+  echo "⬇️  First-run: downloading models…"
+  bash /app/download_models.sh
+fi
+
+# ─── 3) Start aux services (login, seeding, etc.) ────────────────
+python /app/start_services.py
+
+# ─── 4) Launch FastAPI (vLLM inside) ─────────────────────────────
+exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000

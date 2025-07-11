@@ -1,60 +1,102 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 🗃️ Base directory for all models (shared between rag-api and tgi)
-MODEL_DIR="./models"
-GPTQ_DIR="$MODEL_DIR/llama_finetuned/gptqmodel_4bit"
+echo "📦  MediMaven model bootstrap - Fixed version"
 
-# 🔗 Base URL for model files
-BASE_URL="https://huggingface.co/dranreb1660/medimaven-models/resolve/main"
+MODEL_ROOT=${MODEL_DIR:-/app/models/v1.1}
+mkdir -p "$MODEL_ROOT"
 
-# 📝 Files needed for GPTQ Model (TGI)
-GPTQ_FILES=(
-  "config.json"
-  "generation_config.json"
-  "model-00001-of-00002.safetensors"
-  "model-00002-of-00002.safetensors"
-  "model.safetensors.index.json"
-  "quant_log.csv"
-  "quantize_config.json"
-  "special_tokens_map.json"
-  "tokenizer_config.json"
-  "tokenizer.json"
-)
+python3 - "$MODEL_ROOT" <<'PY'
+import os, sys
+from huggingface_hub import snapshot_download
+import shutil
 
-# 📝 Extra files required by rag-api (faiss indexes, ranking model)
-EXTRA_FILES=(
-  "faiss_index.bin"
-  "faiss_index_data.json"
-  "faiss_index_mapping.json"
-  "ltr_best_model.json"
-)
+def validate_model(model_dir, expected_files):
+    """Check if all expected files exist and are non-empty"""
+    if not os.path.exists(model_dir):
+        return False
+    
+    for file in expected_files:
+        file_path = os.path.join(model_dir, file)
+        if not os.path.exists(file_path):
+            print(f"  ❌ Missing: {file}")
+            return False
+        if os.path.getsize(file_path) == 0:
+            print(f"  ❌ Empty file: {file}")
+            return False
+    
+    return True
 
-# ✅ Ensure base directories exist
-mkdir -p "$GPTQ_DIR"
-chmod -R 777 "$MODEL_DIR"
+root = sys.argv[1]
+token = os.getenv("HF_TOKEN") if os.getenv("HF_TOKEN") else None
 
-# 📥 Download GPTQ files
-echo "⬇️ Downloading GPTQ model files..."
-for FILE in "${GPTQ_FILES[@]}"; do
-  DEST="$GPTQ_DIR/$FILE"
-  if [ ! -f "$DEST" ]; then
-    echo "   📦 Fetching $FILE..."
-    wget -q --show-progress "$BASE_URL/llama_finetuned/gptqmodel_4bit/$FILE" -O "$DEST"
-  else
-    echo "   ✅ $FILE already exists, skipping..."
-  fi
-done
+# Define models with their expected critical files
+models = {
+    "llama3_8b_awq": {
+        "repo": "dranreb1660/medimaven-llama3-8b-awq",
+        "expected_files": ["config.json", "tokenizer_config.json", "model.safetensors.index.json"],
+        "priority": 1  # High priority - needed for LLM
+    },
+    "ltr_cross-encoder": {
+        "repo": "dranreb1660/medimaven-reranker-bge-cross-encoder",
+        "expected_files": ["config.json", "model.safetensors"],
+        "priority": 2  # Critical - needed for ranking
+    },
+    "ltr_lambdamart": {
+        "repo": "dranreb1660/medimaven-ltr-lambdamart",
+        "expected_files": ["ltr_lambdamart.txt"],
+        "priority": 2  # Critical - needed for ranking
+    },
+    "llama3_8b_fp16": {
+        "repo": "dranreb1660/medimaven-llama3-8b-fp16", 
+        "expected_files": ["config.json", "tokenizer_config.json"],
+        "priority": 3  # Low priority - only needed for high-memory GPUs
+    }
+}
 
-# 📥 Download extra files
-echo "⬇️ Downloading extra model files..."
-for FILE in "${EXTRA_FILES[@]}"; do
-  DEST="$MODEL_DIR/$FILE"
-  if [ ! -f "$DEST" ]; then
-    echo "   📦 Fetching $FILE..."
-    wget -q --show-progress "$BASE_URL/$FILE" -O "$DEST"
-  else
-    echo "   ✅ $FILE already exists, skipping..."
-  fi
-done
+# Sort models by priority
+sorted_models = sorted(models.items(), key=lambda x: x[1]["priority"])
 
-echo "🎉 All models downloaded successfully!"
+for subdir, model_info in sorted_models:
+    local_dir = os.path.join(root, subdir)
+    repo = model_info["repo"]
+    expected_files = model_info["expected_files"]
+    
+    if validate_model(local_dir, expected_files):
+        print(f"✅  {subdir} - validation passed")
+        # Run post-processing if needed
+        if "post_process" in model_info:
+            model_info["post_process"](local_dir)
+    else:
+        print(f"⬇️  {repo}@v1.1 → {local_dir}")
+        # Remove incomplete directory if it exists
+        if os.path.exists(local_dir):
+            shutil.rmtree(local_dir)
+        
+        try:
+            snapshot_download(
+                repo, 
+                revision="v1.1",
+                local_dir=local_dir,
+                token=token
+            )
+            
+            # Run post-processing if needed
+            if "post_process" in model_info:
+                model_info["post_process"](local_dir)
+            
+            # Validate after download
+            if validate_model(local_dir, expected_files):
+                print(f"✅  {subdir} - download and validation successful")
+            else:
+                print(f"❌  {subdir} - download completed but validation failed")
+                
+        except Exception as e:
+            print(f"❌  Failed to download {subdir}: {str(e)}")
+            # For critical models, this is a fatal error
+            if model_info["priority"] <= 2:
+                print(f"💥  Critical model {subdir} failed to download!")
+                # Continue with other models but mark as incomplete
+
+print("🎉  Model bootstrap completed")
+PY

@@ -20,7 +20,7 @@ from pymongo import MongoClient
 
 import wandb
 
-from src.utils import ensure_mongodb_running, get_mongo_connection, insert_documents_in_batches
+from src.backend.utils import ensure_mongodb_running, get_mongo_connection, insert_documents_in_batches
 
 # ------------------ STEP A ------------------ #
 @step
