@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
+}
+html, body {
+  @apply min-h-screen bg-gray-50 dark:bg-gray-900;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont;
+}
