@@ -1,5 +1,5 @@
 // frontend/src/hooks/useChat.tsx
-import { useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useChatStore } from '../store/useChatStore';
 import { paths } from '../types/openapi'; 
@@ -47,22 +47,43 @@ export function useChat() {
   const [lastQuery, setLastQuery] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  /* 3 ▶ hydrate on first mount */
+  const didHydrate = useRef(false);
   useEffect(() => {
-    if (messages.length === 0) {
-      const hist = loadHistory();
-      if (hist.length) hist.forEach(addMessage);
-      else {
-        // seed with welcome message
-        addMessage({
-          id: uuidv4(),
-          role: 'assistant',
-          content: 'Hi! I’m your medical assistant. How can I help you today?',
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  if (didHydrate.current) return;          // already ran → skip
+  didHydrate.current = true;               // mark as done
+
+  const hist = loadHistory();
+  if (hist.length) {
+    hist.forEach(addMessage);
+  } else {
+    addMessage({
+      id: uuidv4(),
+      role: 'assistant',
+      content:
+        'Hi! I’m your medical assistant. How can I help you today?',
+    });
+    // NOTE: saveHistory will run automatically after this addMessage().
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+
+  // /* 3 ▶ hydrate on first mount */
+  // useEffect(() => {
+  //   if (messages.length === 0) {
+  //     const hist = loadHistory();
+  //     if (hist.length) hist.forEach(addMessage);
+  //     else {
+  //       // seed with welcome message
+  //       addMessage({
+  //         id: uuidv4(),
+  //         role: 'assistant',
+  //         content: 'Hi! I’m your medical assistant. How can I help you today?',
+  //       });
+  //     }
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []);
 
   /* 4 ▶ persist every change */
   useEffect(() => {
