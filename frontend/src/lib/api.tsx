@@ -20,7 +20,7 @@ export interface ChatRequest {
 export interface Citation {
   id: string;
   source: string;
-  url: string;
+  url?: string | null;
   rank: number;
 }
 
