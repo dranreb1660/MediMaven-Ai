@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { api, ChatRequest, ChatResponse } from '../lib/api';
-import { Message } from '../types/chat';
-
+import { useChatStore } from '../store/useChatStore';   // 👈 NEW
+import { type Message } from '../types/chat';
 
 const STORAGE_KEY = 'medimaven.chat';
-
 
 function loadHistory(): Message[] {
   try {
@@ -17,89 +16,90 @@ function loadHistory(): Message[] {
 }
 
 export function useChat() {
-  // 1) initial history
-  const [messages, setMessages] = useState<Message[]>(
-    loadHistory().length
-      ? loadHistory()
-      : [
-          {
-            id: uuidv4(),
-            role: 'assistant',
-            content: 'Hi! I’m your medical assistant. How can I help you today?'
-          }
-        ]
-  );
+  // ──────────────────────────────── 1. Zustand state
+  const { cid, setCid, messages, addMessage, reset } = useChatStore();
 
+  // ──────────────────────────────── 2. local UI flags
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastQuery, setLastQuery] = useState<string | null>(null);
 
-  // 2) persist history every change
+  // ──────────────────────────────── 3. hydrate store from LS on first mount
+  useEffect(() => {
+    if (messages.length === 0) {
+      const hist = loadHistory();
+      hist.forEach(addMessage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ──────────────────────────────── 4. persist to LS whenever messages change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
   }, [messages]);
 
-  // 3) helper: reset chat
+  // ──────────────────────────────── 5. reset helper
   const clearChat = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
-    setMessages([
-      {
-        id: uuidv4(),
-        role: 'assistant',
-        content: 'Hi! I’m your medical assistant. How can I help you today?'
-      }
-    ]);
-  }, []);
+    reset();
+    addMessage({
+      id: uuidv4(),
+      role: 'assistant',
+      content: 'Hi! I’m your medical assistant. How can I help you today?',
+    });
+  }, [reset, addMessage]);
 
-  // 4) main send
+  // ──────────────────────────────── 6. main send
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
 
       setLastQuery(trimmed);
-      setMessages(prev => [...prev, { id: uuidv4(), role: 'user', content: trimmed }]);
+      addMessage({ id: uuidv4(), role: 'user', content: trimmed });
       setIsTyping(true);
       setError(null);
 
       try {
-        const res = await api.post<ChatResponse>('/chat', { query: trimmed } as ChatRequest);
-        const { answer, latency, model_version } = res.data;
+        const req: ChatRequest = { query: trimmed, conversation_id: cid ?? null };
+        const res = await api.post<ChatResponse>('/chat', req);
 
+        // cache cid for future turns
+        setCid(res.data.conversation_id);
+
+        const { answer, latency, citations } = res.data;
         const id = uuidv4();
-        setMessages(prev => [
-          ...prev,
-          { id, role: 'assistant', content: '', meta: { latency, modelVersion: model_version } }
-        ]);
+        addMessage({
+          id,
+          role: 'assistant',
+          content: '',
+          meta: { latency, citations },
+        });
 
-        // fake word‑by‑word streaming
+        // fake streaming
         for (const word of answer.split(' ')) {
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === id ? { ...m, content: `${m.content}${m.content ? ' ' : ''}${word}` } : m
-            )
-          );
-          await new Promise(r => setTimeout(r, 40));
-        }
+        useChatStore.getState().editMessage(id, (m) => ({
+          ...m,
+          content: m.content ? `${m.content} ${word}` : word,
+        }));
+        await new Promise((r) => setTimeout(r, 40)); 
+   }
       } catch (err: any) {
         console.error('[Chat API]', err?.response ?? err);
-        setMessages(prev => [
-          ...prev,
-          {
-            id: uuidv4(),
-            role: 'assistant',
-            content: '⚠️ Something went wrong.',
-            meta: { error: true }
-          }
-        ]);
+        addMessage({
+          id: uuidv4(),
+          role: 'assistant',
+          content: '⚠️ Something went wrong.',
+          meta: { error: true },
+        });
       } finally {
         setIsTyping(false);
       }
     },
-    []
+    [addMessage, cid, setCid],
   );
 
-  // 5) retry helper
+  // ──────────────────────────────── 7. retry helper
   const retryLast = useCallback(() => {
     if (lastQuery) sendMessage(lastQuery);
   }, [lastQuery, sendMessage]);

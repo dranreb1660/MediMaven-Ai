@@ -14,10 +14,26 @@ export const api = axios.create({
 // ---------------- API types ------------------
 export interface ChatRequest {
   query: string;
+  conversation_id?: string | null;
+}
+
+export interface Citation {
+  id: string;
+  source: string;
+  url: string;
+  rank: number;
+}
+
+export interface HistoryTurn {
+  user: string;
+  assistant: string;
 }
 
 export interface ChatResponse {
   answer: string;
+  citations: Citation[];         
   latency: number;
-  model_version: string;
+  conversation_id: string;        
+  messages: HistoryTurn[];        
+  model_version?: string;         
 }
