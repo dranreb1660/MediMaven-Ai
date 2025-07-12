@@ -5,19 +5,21 @@ on: [push, pull_request]
 jobs:
   backend-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      - run: |
-          pip install -r requirements.txt
-          # placeholder; replace with `pytest` when tests exist
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install deps & quick compile
+        run: |
+          pip install -r ../requirements.txt
           python -m py_compile $(git ls-files '*.py')
+        working-directory: backend  # relative paths resolve from here
+
   frontend-test:
     runs-on: ubuntu-latest
     defaults:
@@ -25,11 +27,14 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
-      - run: |
-          corepack enable
-          pnpm install --frozen-lockfile
-          pnpm run build --filter '!**/test'
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install & build
+        run: |
+          npm ci
+          npm run build
