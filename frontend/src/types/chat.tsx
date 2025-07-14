@@ -7,6 +7,8 @@ export interface AssistantMeta {
   citations?: Citation[];
   modelVersion?: string;
   error?: boolean;
+  streaming?: boolean;
+
 }
   
 /** Chat message (user or assistant) */

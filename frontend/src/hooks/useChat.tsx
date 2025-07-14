@@ -1,22 +1,14 @@
-// frontend/src/hooks/useChat.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useChatStore } from '../store/useChatStore';
-import { paths } from '../types/openapi'; 
-import { postChat } from '../lib/typedFetch';
-
+import { streamChat } from '../lib/streamChat';
 import { type Message } from '../types/chat';
 
 const STORAGE_KEY = 'medimaven.chat';
+// const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_BASE = "https://217d86f59c2e.ngrok-free.app"; // for testing
 
-type ChatPostRequest  =
-  paths['/chat']['post']['requestBody']['content']['application/json'];
-
-type ChatPostResponse =
-  paths['/chat']['post']['responses']['200']['content']['application/json'];
-
-
-/* -------- utils -------- */
+/* ---------- utils --------- */
 function loadHistory(): Message[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -25,72 +17,40 @@ function loadHistory(): Message[] {
     return [];
   }
 }
-
-function saveHistory(messages: Message[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+function saveHistory(msgs: Message[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
 }
 
-/* -------- hook -------- */
+/* ---------- hook ---------- */
 export function useChat() {
-  /* 1 ▶ Zustand global state */
-  const {
-    cid,
-    setCid,
-    messages,
-    addMessage,
-    editMessage,
-    reset,
-  } = useChatStore();
+  const { cid, setCid, messages, addMessage, editMessage, reset } =
+    useChatStore();
 
-  /* 2 ▶ local ui flags */
   const [isTyping, setIsTyping] = useState(false);
   const [lastQuery, setLastQuery] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /* hydrate once */
   const didHydrate = useRef(false);
   useEffect(() => {
-  if (didHydrate.current) return;          // already ran → skip
-  didHydrate.current = true;               // mark as done
+    if (didHydrate.current) return;
+    didHydrate.current = true;
 
-  const hist = loadHistory();
-  if (hist.length) {
-    hist.forEach(addMessage);
-  } else {
-    addMessage({
-      id: uuidv4(),
-      role: 'assistant',
-      content:
-        'Hi! I’m your medical assistant. How can I help you today?',
-    });
-    // NOTE: saveHistory will run automatically after this addMessage().
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    const hist = loadHistory();
+    if (hist.length) hist.forEach(addMessage);
+    else
+      addMessage({
+        id: uuidv4(),
+        role: 'assistant',
+        content: 'Hi! I’m your medical assistant. How can I help you today?',
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  /* persist */
+  useEffect(() => saveHistory(messages), [messages]);
 
-  // /* 3 ▶ hydrate on first mount */
-  // useEffect(() => {
-  //   if (messages.length === 0) {
-  //     const hist = loadHistory();
-  //     if (hist.length) hist.forEach(addMessage);
-  //     else {
-  //       // seed with welcome message
-  //       addMessage({
-  //         id: uuidv4(),
-  //         role: 'assistant',
-  //         content: 'Hi! I’m your medical assistant. How can I help you today?',
-  //       });
-  //     }
-  //   }
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, []);
-
-  /* 4 ▶ persist every change */
-  useEffect(() => {
-    saveHistory(messages);
-  }, [messages]);
-
-  /* 5 ▶ clear chat helper */
+  /* clear chat */
   const clearChat = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     reset();
@@ -101,48 +61,42 @@ export function useChat() {
     });
   }, [reset, addMessage]);
 
-  /* 6 ▶ core send function */
+  /* main send */
   const sendMessage = useCallback(
-    async (text: string) => {
-      const query = text.trim();
+    async (raw: string) => {
+      const query = raw.trim();
       if (!query) return;
 
-      // optimistic user bubble
       setLastQuery(query);
       addMessage({ id: uuidv4(), role: 'user', content: query });
       setIsTyping(true);
       setError(null);
 
       try {
-        /* ─ call backend ─ */
-        const req: ChatPostRequest = {
-          query,
-          conversation_id: cid ?? null,
-        };
-        const res: ChatPostResponse = await postChat(req);
+        const req = { query, conversation_id: cid ?? null };
 
-        /* ─ cache cid for next turns ─ */
-        setCid(res.conversation_id ?? undefined);
-
-        /* ─ create placeholder assistant bubble ─ */
         const aid = uuidv4();
-        addMessage({
-          id: aid,
-          role: 'assistant',
-          content: '',
-          meta: { latency: res.latency, citations: res.citations },
-        });
+        addMessage({ id: aid, role: 'assistant', content: '', meta: { streaming: true } });
 
-        /* ─ fake streaming word-by-word ─ */
-        for (const word of res.answer.split(' ')) {
-          editMessage(aid, (m) => ({
-            ...m,
-            content: m.content ? `${m.content} ${word}` : word,
-          }));
-          await new Promise((r) => setTimeout(r, 40));
+        for await (const chunk of streamChat(req, API_BASE)) {
+          if (chunk.type === 'token') {
+            editMessage(aid, m => ({ ...m, content: m.content + chunk.token }));
+          } else {
+            /* done */
+            editMessage(aid, m => ({
+              ...m,
+              content: chunk.meta.answer,
+              meta: {
+                latency: chunk.meta.latency,
+                citations: chunk.meta.citations,
+                streaming: false,
+              },
+            }));
+            setCid(chunk.meta.conversation_id ?? undefined);
+          }
         }
-      } catch (err: any) {
-        console.error('[Chat API]', err);
+      } catch (err) {
+        console.error('[chat]', err);
         addMessage({
           id: uuidv4(),
           role: 'assistant',
@@ -157,17 +111,10 @@ export function useChat() {
     [cid, setCid, addMessage, editMessage],
   );
 
-  /* 7 ▶ retry helper */
-  const retryLast = useCallback(() => {
-    if (lastQuery) sendMessage(lastQuery);
-  }, [lastQuery, sendMessage]);
+  const retryLast = useCallback(
+    () => lastQuery && sendMessage(lastQuery),
+    [lastQuery, sendMessage],
+  );
 
-  return {
-    messages,
-    sendMessage,
-    retryLast,
-    clearChat,
-    isTyping,
-    error,
-  };
+  return { messages, sendMessage, retryLast, clearChat, isTyping, error };
 }

@@ -1,214 +1,468 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# src/backend/app/main.py ─ production FastAPI entry-point
+# # ─────────────────────────────────────────────────────────────────────────────
+# # src/backend/app/main.py  —  production FastAPI entry-point (refactored)
+# # ─────────────────────────────────────────────────────────────────────────────
+# from __future__ import annotations
+
+# import os, time, json, hashlib, uuid
+# from contextlib import asynccontextmanager
+# from typing import Dict
+
+# import torch, wandb, weave
+# from fastapi import FastAPI, HTTPException
+# from fastapi.middleware.cors import CORSMiddleware
+# from fastapi.responses import StreamingResponse
+# from sse_starlette.sse import EventSourceResponse  # keep for future upgrades
+
+# from backend.app import config
+# from backend.app.schemas import ChatRequest, ChatResponse, ConversationMessage
+# from backend.services.medimaven import MediMaven
+# from backend.services.generate import Backend
+# from backend.services.caching import InHouseCache
+# from backend.utils import Timer
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 0) Globals & helpers
+# # ────────────────────────────────────────────────────────────────────────
+# bot: MediMaven | None = None                    # singleton RAG engine
+# conversation_store: Dict[str, dict] = {}        # in-memory; replace w/ Redis
+# response_cache = InHouseCache(max_size=500)     # LRU if Redis not configured
+
+# INTENT_SUFFIX = {
+#     "elaborate": " detailed explanation causes pathophysiology",
+#     "prevent":   " preventive measures lifestyle emergency steps",
+#     "scared":    " reassurance prognosis risk statistics",
+# }
+
+# def should_bypass_cache(q: str) -> bool:
+#     return any(t in q.lower() for t in ("update", "latest", "current",
+#                                         "new", "emergency", "urgent"))
+
+# def enhance_query(history: list, q: str) -> str:
+#     suf = next((v for k, v in INTENT_SUFFIX.items() if k in q.lower()), "")
+#     stitched_history = " ".join(f"{t['user']} {t['assistant']}" for t in history[-3:])
+#     return f"{stitched_history} {q} {suf}".strip()
+
+# def update_conv(memory: dict, user: str, assistant: str, k: int = 3):
+#     memory.setdefault("turns", []).append({"user": user, "assistant": assistant})
+#     if len(memory["turns"]) > k:
+#         memory["turns"] = memory["turns"][-k:]
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 1) FastAPI app + lifecycle
+# # ────────────────────────────────────────────────────────────────────────
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     global bot, response_cache
+
+#     # 1. cache backend (Redis if URL provided)
+#     if config.REDIS_URL:
+#         import redis.asyncio as redis
+#         redis_client = redis.from_url(config.REDIS_URL)
+
+#         class RedisCache:
+#             async def get(self, k): return await redis_client.get(k)
+#             async def set(self, k, v, expire=300): await redis_client.set(k, v, ex=expire)
+#         response_cache = RedisCache()  # type: ignore
+
+#     # 2. initialise MediMaven engine
+#     backend_choice = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
+#     bot = MediMaven(backend_choice)
+
+#     if config.ENABLE_MONITORING:
+#         wandb.init(project="Medimaven-rag-production",
+#                    config={"backend": backend_choice.name,
+#                            "model_path": os.getenv("MODEL_PATH", config.MODEL_DIR)})
+#         weave.init("Medimaven-rag-production")
+
+#     print("✅ MediMaven initialised with", backend_choice.name)
+#     yield
+
+#     # 3. graceful shutdown (vLLM engine)
+#     if bot and hasattr(bot.generator, "engine"):
+#         close_fn = getattr(bot.generator.engine, "shutdown",
+#                            getattr(bot.generator.engine, "close", None))
+#         if close_fn:
+#             await close_fn()
+#             print("🛑 vLLM engine shut down")
+
+# app = FastAPI(lifespan=lifespan)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=config.ALLOWED_ORIGINS,
+#     allow_credentials=True,
+#     allow_methods=["GET", "POST", "OPTIONS"],
+#     allow_headers=["*"],
+# )
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 2) Health
+# # ────────────────────────────────────────────────────────────────────────
+# @app.get("/health")
+# def health_check(): return {"status": "ok"}
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 3) Helper that BOTH routes share (full RAG pipeline without I/O)
+# # ────────────────────────────────────────────────────────────────────────
+# async def process_query(req: ChatRequest) -> tuple[dict, str, dict]:
+#     """
+#     Returns:
+#         result      – dict from bot.answer(...)   (answer  + citations)
+#         cid         – conversation id
+#         memory      – mutable conversation history entry
+#     """
+#     if bot is None:
+#         raise HTTPException(503, "RAG engine not initialised")
+
+#     cid = req.conversation_id or str(uuid.uuid4())
+#     memory = conversation_store.get(cid, {"turns": []})
+#     first_turn = len(memory["turns"]) == 0
+
+#     stitched_q = req.query if first_turn else await bot.rewrite_followup(req.query, memory["turns"])
+#     stitched_q = enhance_query(memory["turns"], stitched_q)
+
+#     # cache key: query + last 2 user messages
+#     key_src = stitched_q + "|".join(t["user"] for t in memory["turns"][-2:])
+#     cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
+
+#     result, cache_hit = None, False
+#     if config.ENABLE_CACHING and not should_bypass_cache(stitched_q):
+#         result = await response_cache.get(cache_key)  # type: ignore
+
+#     if not result:
+#         result = await bot.answer(stitched_q)         # { answer, citations }
+#         if config.ENABLE_CACHING:
+#             await response_cache.set(cache_key, result)  # type: ignore
+#     else:
+#         cache_hit = True
+
+#     # prepend welcome for first turn
+#     if first_turn:
+#         result = result.copy()
+#         result["answer"] = "👋 Welcome to MediMaven.\n" + result["answer"]
+
+#     # update conversation store
+#     update_conv(memory, req.query, result["answer"])
+#     conversation_store[cid] = memory
+
+#     return result, cid, memory, cache_hit
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 4) Legacy JSON endpoint  (kept for backward-compat)
+# # ────────────────────────────────────────────────────────────────────────
+# @app.post("/chat", response_model=ChatResponse)
+# async def chat_endpoint(req: ChatRequest):
+#     timer = Timer()
+#     try:
+#         result, cid, memory, cache_hit = await process_query(req)
+#         return ChatResponse(
+#             answer=result["answer"],
+#             citations=result["citations"],
+#             latency=round(timer.elapsed(), 3),
+#             cache_hit=cache_hit,
+#             conversation_id=cid,
+#             messages=[ConversationMessage(**t) for t in memory["turns"]],
+#         )
+#     except Exception as e:
+#         raise HTTPException(500, f"Processing error: {e}")
+
+# # ────────────────────────────────────────────────────────────────────────
+# # 5) NEW /chat/stream  (single-call SSE with meta frame)
+# # ────────────────────────────────────────────────────────────────────────
+# @app.post("/chat/stream")
+# async def chat_stream(req: ChatRequest):
+#     """
+#     Streams tokens as they are generated.
+#     Final frame includes the same metadata as /chat so frontend
+#     never needs a follow-up call.
+#     Latency is measured **until the first token is yielded**.
+#     """
+#     if bot is None:
+#         raise HTTPException(503, "RAG engine not initialised")
+
+#     # reuse all query-handling, cache, rewrite logic
+#     result, cid, memory, cache_hit = await process_query(req)
+
+#     async def event_gen():
+#         t0 = time.perf_counter()
+#         first_token_sent, first_latency = False, 0.0
+
+#         # If the response came from cache, stream it token-by-token quickly
+#         if cache_hit:
+#             for tok in result["answer"].split():
+#                 if not first_token_sent:
+#                     first_latency = time.perf_counter() - t0
+#                     first_token_sent = True
+#                 yield f"data: {json.dumps({'token': tok + ' '})}\n\n"
+#                 await asyncio.sleep(0.005)
+#         else:
+#             async for tok in bot.stream_answer(req.query):
+#                 if not first_token_sent:
+#                     first_latency = time.perf_counter() - t0
+#                     first_token_sent = True
+#                 yield f"data: {json.dumps({'token': tok})}\n\n"
+
+#         meta = {
+#             "done": True,
+#             "answer": result["answer"],
+#             "citations": result["citations"],
+#             "latency": round(first_latency, 3),
+#             "conversation_id": cid,
+#             "messages": memory["turns"],
+#             "cache_hit": cache_hit,
+#         }
+#         yield f"data: {json.dumps(meta)}\n\n"
+
+#     return StreamingResponse(event_gen(),
+#                              media_type="text/event-stream")
+    
+    
+    
+    # ─────────────────────────────────────────────────────────────────────────────
+# src/backend/app/main.py   – FastAPI entry-point with SSE
 # ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
-import os, time, hashlib
+import os, json, time, asyncio, hashlib, uuid
 from contextlib import asynccontextmanager
-from uuid import uuid4
-from collections import OrderedDict
 from typing import Dict
 
+import torch, wandb, weave, re, string
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import torch, wandb, weave
+from fastapi.responses import StreamingResponse
 
-# pydantic request/response models
+from backend.app import config
 from backend.app.schemas import ChatRequest, ChatResponse, ConversationMessage
-
-# New modular RAG stack
 from backend.services.medimaven import MediMaven
 from backend.services.generate import Backend
 from backend.services.caching import InHouseCache
-from backend.app import config
 from backend.utils import Timer
-# ---------------------------------------------------------------------------
-# 0) Lifespan Event Handler
-# ---------------------------------------------------------------------------
-bot: MediMaven | None = None  # Singleton RAG engine
+
+# ─── globals ────────────────────────────────────────────────────────────────
+bot: MediMaven | None = None
+conversation_store: Dict[str, dict] = {}
+response_cache: InHouseCache | any = InHouseCache(max_size=500)
+
+def update_conv(mem: dict, user: str, assistant: str, k: int = 3):
+    mem.setdefault("turns", []).append({"user": user, "assistant": assistant})
+    if len(mem["turns"]) > k:
+        mem["turns"] = mem["turns"][-k:]
+
+def should_bypass(q: str):  # simple heuristic
+    return any(t in q.lower() for t in ("update", "latest", "current",
+                                        "new", "emergency", "urgent"))
 
 
-# Global cache instance
-response_cache = InHouseCache(max_size=500)
+RE_CONTRACTIONS = [
+    (re.compile(r"\b([A-Za-z]+)\s+n’t\b", re.I), r"\1n’t"),   # don’t, can’t
+    (re.compile(r"\b([A-Za-z]+)\s+s\b",    re.I), r"\1’s"),   # it’s, what’s
+    (re.compile(r"\b([A-Za-z]+)\s+d\b",    re.I), r"\1’d"),   # I’d, you’d
+    (re.compile(r"\b([A-Za-z]+)\s+ll\b",   re.I), r"\1’ll"),  # we’ll
+    (re.compile(r"\b([A-Za-z]+)\s+re\b",   re.I), r"\1’re"),  # they’re
+    (re.compile(r"\b([A-Za-z]+)\s+ve\b",   re.I), r"\1’ve"),  # we’ve
+]
 
+def postprocess(text: str) -> str:
+    # collapse " . [3]." → " [3]."
+    text = re.sub(r"\.\s+\[(\d+)]\.", r" [\1].", text)
+
+    # contractions
+    for pat, repl in RE_CONTRACTIONS:
+        text = pat.sub(repl, text)
+
+    # capitalize first letter + after sentence ends
+    def _caps(m):
+        return m.group(0).upper()
+    text = re.sub(r"(?:^|[.!?]\s+)(\w)", _caps, text)
+
+    return text
+
+
+# ─── lifespan ───────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handles startup and shutdown events"""
-    global bot
-    # ─── Cache Setup ─────────────────────────────────────────────────────
-    # Use Redis cache if configured, otherwise use in-memory cache
+    global bot, response_cache
+
     if config.REDIS_URL:
         import redis.asyncio as redis
-        redis_client = redis.from_url(config.REDIS_URL)
-        
+        rc = redis.from_url(config.REDIS_URL)
+
         class RedisCache:
-            async def get(self, key: str):
-                return await redis_client.get(key)
-            
-            async def set(self, key: str, value: any, expire: int = 300):
-                await redis_client.set(key, value, ex=expire)
-        
-        response_cache = RedisCache()
-    
-    # ─── Startup Logic ─────────────────────────────────────────────────
-    # Choose LLM backend automatically: vLLM if GPU, else transformers
-    llm_backend = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
-    bot = MediMaven(llm_backend)
+            async def get(self, k): return await rc.get(k)
+            async def set(self, k, v, ex=300): await rc.set(k, v, ex=ex)
+        response_cache = RedisCache()  # type: ignore
 
-    # Init Weights & Biases run
+    backend_choice = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
+    bot = MediMaven(backend_choice)
+    print("✅ MediMaven started with", backend_choice.name)
+
     if config.ENABLE_MONITORING:
-        wandb.init(
-            project="Medimaven-rag-production",
-            config={
-                "backend": llm_backend.name,
-                "model_path": os.getenv("MODEL_PATH", config.MODEL_DIR),
-            },
-        )
+        wandb.init(project="Medimaven-rag-production",
+                   config={"backend": backend_choice.name,
+                           "model_path": os.getenv("MODEL_PATH", config.MODEL_DIR)})
         weave.init("Medimaven-rag-production")
-    print("✅ MediMaven engine initialised with", llm_backend.name)
-    
-    yield  # App runs here
-    
-    # ─── Shutdown Logic ────────────────────────────────────────────────
-    if bot is None:
-        return
-        
-    gen = bot.generator
-    if hasattr(gen, "engine"):  # VLLM backend
-        shutdown_fn = getattr(gen.engine, "shutdown", None) or getattr(
-            gen.engine, "close", None
-        )
-        if shutdown_fn:
-            await shutdown_fn()
-            print("🛑 vLLM engine shut down")
 
-# ---------------------------------------------------------------------------
-# 1) Environment + CORS
-# ---------------------------------------------------------------------------
-print("📟 Torch device:", torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-if torch.cuda.is_available():
-    print("🚀 CUDA device:", torch.cuda.get_device_name(0))
+    yield  # ── application runs ──
 
-origins = config.ALLOWED_ORIGINS
+    if bot and hasattr(bot.generator, "engine"):
+        close_fn = getattr(bot.generator.engine,
+                           "shutdown",
+                           getattr(bot.generator.engine, "close", None))
+        if close_fn: await close_fn()
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Intent recognition helpers
-INTENT_SUFFIX = {
-    "elaborate": " detailed explanation causes pathophysiology",
-    "prevent":   " preventive measures lifestyle emergency steps",
-    "scared":    " reassurance prognosis risk statistics"
-}
-
-def enhance_query(history: list, new_query: str) -> str:
-    """Augment query based on detected intent"""
-    suffix = next((v for k,v in INTENT_SUFFIX.items() if k in new_query.lower()), "")
-    return " ".join(h["user"] + " " + h["assistant"] for h in history[-3:]) + " " + new_query + suffix
-
-# ---------------------------------------------------------------------------
-# 2) Routes
-# ---------------------------------------------------------------------------
-@app.get("/health")
-def health_check():
-    return {"status": "ok"}
-
-# In-memory conversation store (replace with Redis in production)
-conversation_store: Dict[str, dict] = {}
-
-def update_conversation(memory: dict, user_query: str, assistant_response: str, max_history: int = 3):
-    """Update conversation history with new turn"""
-    if "turns" not in memory:
-        memory["turns"] = []
-        
-    memory["turns"].append({
-        "user": user_query, 
-        "assistant": assistant_response
-    })
-    
-    # Maintain conversation window
-    if len(memory["turns"]) > max_history:
-        memory["turns"] = memory["turns"][-max_history:]
-
-def should_bypass_cache(query: str) -> bool:
-    """Determine if we should bypass cache for this query"""
-    bypass_phrases = ["update", "latest", "current", "new", "emergency", "urgent"]
-    return any(phrase in query.lower() for phrase in bypass_phrases)
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(req: ChatRequest):
-    global bot
+# ─── shared RAG pipeline (non-stream) ───────────────────────────────────────
+async def run_rag(req: ChatRequest):
     if bot is None:
-        raise HTTPException(status_code=503, detail="RAG engine not initialised")
+        raise HTTPException(503, "RAG engine not initialised")
 
-    t0 = Timer()
-    
-    try:
-        # Get or create conversation ID
-        cid = req.conversation_id or str(uuid4())
-        memory = conversation_store.get(cid, {"turns": []})
-        first_turn = len(memory["turns"]) == 0
+    cid  = req.conversation_id or str(uuid.uuid4())
+    mem  = conversation_store.get(cid, {"turns": []})
+    first_turn = not mem["turns"]
 
-        # ─── Query Processing ──────────────────────────────────────────
-        if not first_turn:  # Follow-up question
-            standalone_q = await bot.rewrite_followup(req.query, memory["turns"])
-            stitched_query = standalone_q
+    stitched_q = req.query if first_turn else \
+        await bot.rewrite_followup(req.query, mem["turns"])
+
+    # simple two-turn cache key
+    key_src = stitched_q + "|".join(t["user"] for t in mem["turns"][-2:])
+    cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
+
+    result, cache_hit = None, False
+    if config.ENABLE_CACHING and not should_bypass(stitched_q):
+        result = await response_cache.get(cache_key)  # type: ignore
+
+    if not result:
+        result = await bot.answer_rag(stitched_q)
+        if config.ENABLE_CACHING:
+            await response_cache.set(cache_key, result)  # type: ignore
+    else:
+        cache_hit = True
+
+    if first_turn:
+        result = result.copy()
+        result["answer"] = "👋 Welcome to MediMaven.\n" + result["answer"]
+
+    update_conv(mem, req.query, result["answer"])
+    conversation_store[cid] = mem
+
+    return result, cid, mem, cache_hit
+
+# ─── health ────────────────────────────────────────────────────────────────
+@app.get("/health")
+def health(): return {"status": "ok"}
+
+# ─── legacy JSON endpoint ──────────────────────────────────────────────────
+@app.post("/chat", response_model=ChatResponse)
+async def chat(req: ChatRequest):
+    timer = Timer()
+    result, cid, mem, cache_hit = await run_rag(req)
+    return ChatResponse(
+        answer          = result["answer"],
+        citations       = result["citations"],
+        latency         = round(timer.elapsed(), 3),
+        cache_hit       = cache_hit,
+        conversation_id = cid,
+        messages        = [ConversationMessage(**t) for t in mem["turns"]],
+    )
+
+# ─── streaming endpoint (single-call, first-turn welcome, cache support) ────
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest):
+    if bot is None:
+        raise HTTPException(503, "RAG engine not initialised")
+
+    # ── replicate run_rag() logic WITHOUT full generation ───────────────
+    cid  = req.conversation_id or str(uuid.uuid4())
+    mem  = conversation_store.get(cid, {"turns": []})
+    first = not mem["turns"]
+
+    stitched_q = req.query if first else \
+        (print("Rewriting follow-up query..."), await bot.rewrite_followup(req.query, mem["turns"]))[1]
+
+    key_src  = stitched_q + "|".join(t["user"] for t in mem["turns"][-2:])
+    cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
+
+    cached, cache_hit = None, False
+    if config.ENABLE_CACHING and not should_bypass(stitched_q):
+        cached = await response_cache.get(cache_key)    # type: ignore
+
+    if cached:
+        # fast path – stream cached answer word-by-word
+        ranked_docs = []     # already embedded in cached['citations']
+        prompt      = None
+        cache_hit   = True
+    else:
+        ranked_docs, prompt = await bot.prepare_stream(stitched_q)
+        cache_hit           = False
+
+    # provisional assistant message in history
+    update_conv(mem, req.query, "")
+    conversation_store[cid] = mem
+
+    # ── streaming coroutine ─────────────────────────────────────────────
+    async def events():
+        t0 = time.perf_counter()
+        latency_first, answer_buf = None, ""
+
+        # 1) optionally prepend welcome
+        if first:
+            welcome = "👋 Welcome to MediMaven.\n"
+            answer_buf += welcome
+            yield f"data: {json.dumps({'token': welcome})}\n\n"
+
+        # 2) send tokens
+        if cache_hit:
+            # cached: stream quickly word-by-word
+            for w in cached["answer"].split(" "):
+                if latency_first is None:
+                    latency_first = time.perf_counter() - t0
+                answer_buf += w + " "
+                yield f"data: {json.dumps({'token': w + ' '})}\n\n"
         else:
-            stitched_query = req.query
-            
-        # Generate cache key (query + last 2 conversation turns)
-        context_str = stitched_query + "|".join(t["user"] for t in memory["turns"][-2:])
-        context_hash = hashlib.sha256(context_str.encode()).hexdigest()
-        cache_key = f"response:{context_hash}"
-        
-        # Check cache
-        cached_response = None
-        cache_hit = False
-        
-        if config.ENABLE_CACHING and not should_bypass_cache(stitched_query):
-            cached_response = response_cache.get(cache_key)
-            
-        if cached_response:
-            result = cached_response
-            cache_hit = True
-        else:
-            # Process query through RAG pipeline (original response without welcome)
-            result = await bot.answer(stitched_query)
-            if config.ENABLE_CACHING:
-                # Cache the ORIGINAL response (without welcome)
-                response_cache.set(cache_key, result)
+            async for tok in bot.stream_generator(prompt):
+                if latency_first is None:
+                    latency_first = time.perf_counter() - t0
+                answer_buf += tok
+                yield f"data: {json.dumps({'token': tok}, ensure_ascii=False)}\n\n"
 
-        # ─── Add welcome message ONLY for first turn ───────────────────
-        # Use a copy of the result to avoid modifying cached data
-        final_answer = result["answer"]
-        if first_turn:
-            final_answer = "👋 Welcome to MediMaven.\n" + final_answer
+        # 3) finalise history + maybe cache
+        answer_clean = postprocess(bot.clean_text(answer_buf))
+        mem["turns"][-1]["assistant"] = answer_clean
 
-        # Update conversation with the FINAL answer (may include welcome)
-        update_conversation(memory, req.query, final_answer)
-        conversation_store[cid] = memory
-        
-        total_latency = round(t0.elapsed(), 3)
+        if not cache_hit and config.ENABLE_CACHING:
+            to_cache = {
+                "answer": answer_clean,
+                "citations": [
+                    {"id": r["id"], "source": r.get("source"),
+                     "url": r.get("url"), "rank": i + 1}
+                    for i, r in enumerate(ranked_docs[:5])
+                ],
+            }
+            await response_cache.set(cache_key, to_cache)   # type: ignore
 
-        return ChatResponse(
-            answer=final_answer,  # Use the final answer (may include welcome)
-            citations=result["citations"],
-            latency=total_latency,
-            cache_hit=cache_hit,
-            conversation_id=cid,
-            messages=[
-                ConversationMessage(user=turn["user"], assistant=turn["assistant"])
-                for turn in memory["turns"]
+        # 4) meta frame
+        meta = {
+            "done": True,
+            "answer": answer_clean,
+            "citations": cached["citations"] if cache_hit else [
+                {"id": r["id"], "source": r.get("source"),
+                 "url": r.get("url"), "rank": i + 1}
+                for i, r in enumerate(ranked_docs[:5])
             ],
-        )
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+            "latency": round(latency_first or 0, 3),
+            "conversation_id": cid,
+            "messages": mem["turns"],
+        }
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(),
+                             media_type="text/event-stream")
+

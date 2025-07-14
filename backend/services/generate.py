@@ -101,7 +101,26 @@ class Generator:
             return "I'm having trouble generating a response. Could you rephrase your question?"
             
         return decoded
-        
+
+    async def stream(self, prompt: str, max_new_tokens: int = 128):
+        """Yield only the NEW part of each incremental chunk."""
+        if self.backend != Backend.VLLM:
+            # Fallback for non-streaming backends
+            yield await self.generate(prompt, max_new_tokens)
+            return
+
+        params = self.params.clone()
+        params.max_tokens = max_new_tokens
+        prev = ""
+        async for chunk in self.engine.generate(prompt, params, request_id="request-1"):
+            cur = chunk.outputs[0].text
+            delta = cur[len(prev):]
+            prev = cur
+            if delta:
+                yield delta # Yield only new tokens
+                
+                
+    
     def close(self):
         if self.backend == Backend.VLLM:
             self.engine.shutdown()  
