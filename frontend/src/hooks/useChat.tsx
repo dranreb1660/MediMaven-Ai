@@ -5,18 +5,8 @@ import { streamChat } from '../lib/streamChat';
 import { type Message } from '../types/chat';
 
 const STORAGE_KEY = 'medimaven.chat';
-// const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-const API_BASE = "https://217d86f59c2e.ngrok-free.app"; // for testing
+const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-/* ---------- utils --------- */
-function loadHistory(): Message[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Message[]) : [];
-  } catch {
-    return [];
-  }
-}
 function saveHistory(msgs: Message[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
 }
@@ -32,20 +22,19 @@ export function useChat() {
 
   /* hydrate once */
   const didHydrate = useRef(false);
-  useEffect(() => {
-    if (didHydrate.current) return;
-    didHydrate.current = true;
 
-    const hist = loadHistory();
-    if (hist.length) hist.forEach(addMessage);
-    else
-      addMessage({
-        id: uuidv4(),
-        role: 'assistant',
-        content: 'Hi! I’m your medical assistant. How can I help you today?',
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+/* inside the initial useEffect */
+useEffect(() => {
+  const { messages: cur, hydrated } = useChatStore.getState();
+  if (hydrated && !cur.length) {
+    addMessage({
+      id: uuidv4(),
+      role: 'assistant',
+      content: 'Hi! I’m your medical assistant. How can I help you today?',
+    });
+  }
+}, []);
+
 
   /* persist */
   useEffect(() => saveHistory(messages), [messages]);
@@ -72,10 +61,11 @@ export function useChat() {
       setIsTyping(true);
       setError(null);
 
+      let aid = '';
       try {
         const req = { query, conversation_id: cid ?? null };
 
-        const aid = uuidv4();
+        aid = uuidv4();
         addMessage({ id: aid, role: 'assistant', content: '', meta: { streaming: true } });
 
         for await (const chunk of streamChat(req, API_BASE)) {
@@ -97,19 +87,21 @@ export function useChat() {
         }
       } catch (err) {
         console.error('[chat]', err);
-        addMessage({
-          id: uuidv4(),
-          role: 'assistant',
+          // turn the streaming bubble into an error bubble
+      if (aid) {
+        editMessage(aid, m => ({
+          ...m,
           content: '⚠️ Something went wrong.',
-          meta: { error: true },
-        });
-        setError('request_failed');
-      } finally {
-        setIsTyping(false);
+          meta: { ...m.meta, streaming: false, error: true },
+        }));
       }
-    },
-    [cid, setCid, addMessage, editMessage],
-  );
+      setError('request_failed');
+    } finally {
+      setIsTyping(false);
+    }
+  },
+  [cid, setCid, addMessage, editMessage],
+);
 
   const retryLast = useCallback(
     () => lastQuery && sendMessage(lastQuery),

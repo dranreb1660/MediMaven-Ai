@@ -1,40 +1,71 @@
-// frontend/src/store/useChatStore.ts
 import { create } from 'zustand';
 import { type Message } from '../types/chat';
+import { persistChat, rehydrateChat } from '../lib/cache';
 
-const LS_KEY = 'medimaven.chat';
-
+/* ---------- types ---------- */
 interface ChatState {
   cid?: string;
   messages: Message[];
+  hydrated: boolean;
   setCid: (id?: string) => void;
   addMessage: (msg: Message) => void;
-  /** wipe cid + messages + localStorage */
   reset: () => void;
-  /** mutate existing message (for streaming updates) */
   editMessage: (id: string, updater: (m: Message) => Message) => void;
 }
 
+interface CachePayload {
+  cid?: string;
+  messages: Message[];
+}
 
-
-export const useChatStore = create<ChatState>()((set) => ({
+/* ---------- store ---------- */
+export const useChatStore = create<ChatState>((set, get) => ({
   cid: undefined,
   messages: [],
+  hydrated: false,
 
-  setCid: (id) => set({ cid: id }),
+  addMessage: (msg) => {
+    set((s) => ({ messages: [...s.messages, msg] }));
+    const { hydrated, cid, messages } = get();
+    if (hydrated) persistChat(cid, messages).catch(console.error);
+  },
 
-  addMessage: (msg) =>
-    set((s) => ({ messages: [...s.messages, msg] })),
+  setCid: (id) => {
+    set({ cid: id });
+    const { hydrated, messages } = get();
+    if (hydrated) persistChat(id, messages).catch(console.error);
+  },
 
   reset: () => {
-    localStorage.removeItem(LS_KEY);          // ← clears persisted chat
     set({ cid: undefined, messages: [] });
+    const { hydrated } = get();
+    if (hydrated) persistChat(undefined, []).catch(console.error);
   },
 
   editMessage: (id, updater) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
+    set((s) => {
+      const updated = s.messages.map((m) =>
         m.id === id ? updater(m) : m,
-      ),
-    })),
+      );
+      if (s.hydrated) persistChat(s.cid, updated).catch(console.error);
+      return { messages: updated };
+    }),
 }));
+
+/* ---------- one-time hydrate ---------- */
+rehydrateChat()
+  .then((cache: CachePayload | null) => {
+    if (cache) {
+      useChatStore.setState({
+        cid: cache.cid,
+        messages: cache.messages,
+        hydrated: true,
+      });
+    } else {
+      useChatStore.setState({ hydrated: true });
+    }
+  })
+  .catch((e) => {
+    console.error('IDB hydrate error', e);
+    useChatStore.setState({ hydrated: true });
+  });

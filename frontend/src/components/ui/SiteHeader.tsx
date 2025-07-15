@@ -15,7 +15,6 @@ interface HeaderProps {
   variant: HeaderVariant;
   onClear?: () => void;   // still used for hard-wipe (optional)
 }
-
 export default function SiteHeader({ variant, onClear }: HeaderProps) {
   /* ─ Zustand ─ */
   const { cid, reset } = useChatStore();

@@ -10,8 +10,8 @@ export interface DoneChunk  { type: 'done';  meta: any }
  */
 export async function* streamChat(
   body: unknown,
-//   apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
-apiBase = "https://217d86f59c2e.ngrok-free.app", // for testing
+  apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
+// apiBase = "https://8df32270f4f9.ngrok-free.app", // for testing
 
 ) {
   const res = await fetch(`${apiBase}/chat/stream`, {
