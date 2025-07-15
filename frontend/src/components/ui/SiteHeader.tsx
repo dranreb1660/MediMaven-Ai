@@ -42,7 +42,8 @@ export default function SiteHeader({ variant, onClear }: HeaderProps) {
   };
 
   return (
-    <div className="sticky top-0 z-20 w-full bg-gray-50 dark:bg-gray-900 border-b dark:border-gray-700">
+    <div className="sticky top-0 z-20 w-full bg-white/95 dark:bg-gray-900/95
+                backdrop-blur-sm pt-safe-top">
       <div className="mx-auto max-w-screen-lg flex items-center justify-between px-4 py-2">
         {/* left */}
         <div className="flex items-center gap-2">
