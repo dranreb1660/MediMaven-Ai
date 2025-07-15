@@ -14,6 +14,8 @@
     "@fontsource/inter": "^5.2.5",
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-hover-card": "^1.1.14",
+    "@radix-ui/react-popover": "^1.1.14",
     "@tailwindcss/typography": "^0.5.16",
     "@types/uuid": "^10.0.0",
     "axios": "^1.9.0",

@@ -3,6 +3,10 @@ import { Citation } from '../../lib/api';
 import TypingDots from '../ui/TypingDots';
 import Bubble from '../ui/Bubble';
 import Badge from '../ui/Badge';
+import CitationHoverCard from '../ui/CitationHoverCard';
+import CitationPopover from '../ui/CitationPopover';
+
+
 
 interface BubbleProps {
   role: Message['role'];
@@ -13,21 +17,15 @@ interface BubbleProps {
 
 const Citations = ({ cits }: { cits?: Citation[] }) =>
   cits?.length ? (
-    <sup className="ml-1">
+    <sup className="ml-1 space-x-0.5">
       {cits.map((c, i) => (
-        <a
-          key={c.id}
-          href={c.url ?? '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs hover:underline"
-          aria-label={`Citation ${i + 1}`}
-        >
+        <CitationHoverCard key={c.id} url={c.url ?? '#'} source={c.source}>
           [{i + 1}]
-        </a>
+        </CitationHoverCard>
       ))}
     </sup>
   ) : null;
+
 
 export default function ChatBubble({ role, content, meta, retry }: BubbleProps) {
   const isUser = role === 'user';
