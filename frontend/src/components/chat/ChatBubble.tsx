@@ -21,6 +21,7 @@ const Citations = ({ cits }: { cits?: Citation[] }) =>
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs hover:underline"
+          aria-label={`Citation ${i + 1}`}
         >
           [{i + 1}]
         </a>

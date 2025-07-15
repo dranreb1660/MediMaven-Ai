@@ -48,6 +48,7 @@ export default function ChatBox({ prefill }: Props) {
         {/* input row */}
       <div className="flex items-center gap-2 px-4 py-3 border-t dark:border-gray-700">
         <input
+          aria-label='Ask your health question...'
           type="text"
           placeholder="Ask your health question..."
           className="flex-1 border dark:border-gray-600 rounded-full px-4 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none"

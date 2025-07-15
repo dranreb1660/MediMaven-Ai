@@ -19,7 +19,7 @@ export default function WelcomeCard() {
       <div className="flex justify-center">
         <img
           src={doctorIllustration}
-          alt="Medical AI Assistant"
+          alt="Illustration of a virtual medical assistant doctor"
           className="rounded-2xl shadow dark:brightness-90 dark:contrast-110"
         />
       </div>
