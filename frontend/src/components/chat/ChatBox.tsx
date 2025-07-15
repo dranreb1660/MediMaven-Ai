@@ -2,6 +2,8 @@ import { useRef, useState, useEffect } from 'react';
 import { useChat } from '../../hooks/useChat';
 import MessageList from './MessageList';
 import SiteHeader from '../ui/SiteHeader';
+import Button from '../ui/Button';
+
 
 
 
@@ -44,27 +46,19 @@ export default function ChatBox({ prefill }: Props) {
         </div>
 
         {/* input row */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t dark:border-gray-700">
-          <input
-            type="text"
-            placeholder="Ask your Heaalth question..."
-            className="flex-1 border dark:border-gray-600 rounded-full px-4 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && onSend()}
-          />
-          <button
-            disabled={isTyping}
-            onClick={onSend}
-            className={`rounded-full px-6 py-2 text-sm font-semibold transition ${
-              isTyping
-                ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
-                : 'bg-mm-accent hover:bg-mm-accentDark text-white'
-            }`}
-          >
-            Send
-          </button>
-        </div>
+      <div className="flex items-center gap-2 px-4 py-3 border-t dark:border-gray-700">
+        <input
+          type="text"
+          placeholder="Ask your health question..."
+          className="flex-1 border dark:border-gray-600 rounded-full px-4 py-2 text-sm bg-white dark:bg-gray-800 focus:outline-none"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && onSend()}
+        />
+        <Button disabled={isTyping} onClick={onSend}>
+          Send
+        </Button>
+      </div>
       </div>
     </div>
   );
