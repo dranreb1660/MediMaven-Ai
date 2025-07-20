@@ -16,6 +16,7 @@ class ConversationMessage(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     conversation_id: Optional[str] = None
+    history: Optional[List[ConversationMessage]] = None
 
 class ChatResponse(BaseModel):
     answer: str

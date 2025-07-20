@@ -1,14 +1,28 @@
 # from pydantic_settings import BaseSettings
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 from pathlib import Path
 import os
 
+
 ENABLE_MONITORING = os.getenv("ENABLE_MONITORING", True)
 ENABLE_CACHING = os.getenv("ENABLE_CACHING", False)
 REDIS_URL = os.getenv("REDIS_URL", None)  # e.g. redis://localhost:6379/0
+
+# ── Database URLs ──────────────────────────────────────────────────────────
+MONGO_URL = os.getenv("MONGO_URL", " ")  # Default MongoDB URL
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:Luv160%40me.@db.lrutkocupxqczzdtshkw.supabase.co:5432/postgres",
+)
+# -- Authentication (Auth0) -----------------------------------------------
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "medimaven-dev.us.auth0.com")
+AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "https://api.medimaven-ai.com")
 
 # Medical retrieval parameters
 BM25_MEDICAL_K1 = 1.6              # Tuned for clinical term distribution
@@ -26,7 +40,6 @@ ROOT = Path(__file__).resolve().parents[2]          # …/backend/app → projec
 DATA_DIR   = Path(os.getenv("DATA_DIR",   ROOT / "data" / "final"))
 MODEL_DIR  = Path(os.getenv("MODEL_DIR",  ROOT / "models" / "v1.1"))
 
-MONGO_URL = os.getenv("MONGO_URL", " ")  # Default MongoDB URL
 
 # Retrieval
 QDRANT_CLOUD_URL = os.getenv("QDRANT_CLOUD_URL", "https://cloud.qdrant.io")
@@ -53,11 +66,12 @@ AWQ_DIR    = MODEL_DIR / "llama3_8b_awq"
 MIN_FP16_GIB = float(os.getenv("MIN_FP16_GIB", 22))
 
 # Front-end CORS
-ALLOWED_ORIGINS = [
-    "https://www.medimaven-ai.com",
-    "https://medimaven-ai.com",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
+ALLOWED_ORIGINS = ["*"
+    # "https://www.medimaven-ai.com",
+    # "https://medimaven-ai.com",
+    # "http://localhost:5173",
+    # "http://127.0.0.1:5173",
+    # "https://ccca6f6f094f.ngrok-free.app"
 ]
 
 

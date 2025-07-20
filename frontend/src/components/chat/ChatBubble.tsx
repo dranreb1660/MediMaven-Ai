@@ -1,10 +1,9 @@
-import { Message } from '../../types/chat';
-import { Citation } from '../../lib/api';
+import { Message } from '../../types/Types';
+import { Citation } from '../../types/Types';
 import TypingDots from '../ui/TypingDots';
 import Bubble from '../ui/Bubble';
 import Badge from '../ui/Badge';
 import CitationHoverCard from '../ui/CitationHoverCard';
-import CitationPopover from '../ui/CitationPopover';
 
 
 

@@ -1,5 +1,5 @@
 import { get, set } from 'idb-keyval';
-import { type Message } from '../types/chat';
+import { type Message } from '../types/Types';
 
 const CACHE_KEY = 'mm.chat.v1';
 

@@ -1,79 +1,109 @@
+// src/hooks/useChat.tsx
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useChatStore } from '../store/useChatStore';
 import { streamChat } from '../lib/streamChat';
-import { type Message } from '../types/chat';
+import type { ConversationMessage } from '../types/Types';
+import { useAuth } from '../context/AuthContext';
 
-const STORAGE_KEY = 'medimaven.chat';
-const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-function saveHistory(msgs: Message[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
-}
-
-/* ---------- hook ---------- */
 export function useChat() {
-  const { cid, setCid, messages, addMessage, editMessage, reset } =
-    useChatStore();
+  const { cid, setCid, messages, addMessage, editMessage, reset, isLoadingFromHistory } = useChatStore();
+  const { isAuthenticated, getAccessToken } = useAuth();
 
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping, setIsTyping]   = useState(false);
   const [lastQuery, setLastQuery] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
 
-  /* hydrate once */
-  const didHydrate = useRef(false);
+  // Only show welcome once, if the *store* is initially empty AND not loading from history
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current || isLoadingFromHistory) return;
+    
+    // Double check we're not loading from history
+    const currentState = useChatStore.getState();
+    if (currentState.isLoadingFromHistory) return;
+    
+    didInit.current = true;
 
-/* inside the initial useEffect */
-useEffect(() => {
-  const { messages: cur, hydrated } = useChatStore.getState();
-  if (hydrated && !cur.length) {
-    addMessage({
-      id: uuidv4(),
-      role: 'assistant',
-      content: 'Hi! I’m your medical assistant. How can I help you today?',
-    });
-  }
-}, []);
+    if (messages.length === 0) {
+      addMessage({
+        id: uuidv4(),
+        role: 'assistant',
+        content: "Hi! I'm your medical assistant. How can I help you today?",
+      });
+    }
+  }, [messages.length, addMessage, isLoadingFromHistory]);
 
-
-  /* persist */
-  useEffect(() => saveHistory(messages), [messages]);
-
-  /* clear chat */
+  // "New Chat" clears the store (and localStorage) via the store's reset()
   const clearChat = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
     reset();
     addMessage({
       id: uuidv4(),
       role: 'assistant',
-      content: 'Hi! I’m your medical assistant. How can I help you today?',
+      content: "Hi! I'm your medical assistant. How can I help you today?",
     });
   }, [reset, addMessage]);
 
-  /* main send */
   const sendMessage = useCallback(
     async (raw: string) => {
       const query = raw.trim();
       if (!query) return;
 
+      // Completely prevent sending messages while loading from history
+      if (isLoadingFromHistory) {
+        console.warn('Prevented sendMessage during history loading:', query);
+        return;
+      }
+
+      // Don't add duplicate user messages
+      const tail = useChatStore.getState().messages.slice(-1)[0];
+      const isDuplicate = tail?.role === 'user' && tail.content.trim() === query;
+      
+      if (!isDuplicate) {
+        addMessage({ id: uuidv4(), role: 'user', content: query });
+      }
+
       setLastQuery(query);
-      addMessage({ id: uuidv4(), role: 'user', content: query });
       setIsTyping(true);
       setError(null);
 
-      let aid = '';
+      const currentCid = cid ?? null;
+      const aid = uuidv4();
+      addMessage({ id: aid, role: 'assistant', content: '', meta: { streaming: true } });
+
       try {
-        const req = { query, conversation_id: cid ?? null };
+        const token = isAuthenticated
+          ? await getAccessToken({
+              authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+            })
+          : undefined;
 
-        aid = uuidv4();
-        addMessage({ id: aid, role: 'assistant', content: '', meta: { streaming: true } });
-
-        for await (const chunk of streamChat(req, API_BASE)) {
+        // build the history array of { user, assistant } turns
+        const all = useChatStore.getState().messages;
+        const history: ConversationMessage[] = [];
+        let pendingUser: string | undefined;
+        all.forEach((m) => {
+          if (m.role === 'user') {
+            pendingUser = m.content;
+          } else if (m.role === 'assistant' && pendingUser !== undefined) {
+            history.push({ user: pendingUser, assistant: m.content });
+            pendingUser = undefined;
+          }
+        });
+      
+        // include history in the payload
+        const req = {
+          query,
+          conversation_id: currentCid,
+          history,
+        };
+        for await (const chunk of streamChat(req, API_BASE, token)) {
           if (chunk.type === 'token') {
-            editMessage(aid, m => ({ ...m, content: m.content + chunk.token }));
+            editMessage(aid, (m) => ({ ...m, content: m.content + chunk.token }));
           } else {
-            /* done */
-            editMessage(aid, m => ({
+            editMessage(aid, (m) => ({
               ...m,
               content: chunk.meta.answer,
               meta: {
@@ -82,31 +112,25 @@ useEffect(() => {
                 streaming: false,
               },
             }));
-            setCid(chunk.meta.conversation_id ?? undefined);
+            setCid(chunk.meta.conversation_id);
           }
         }
       } catch (err) {
-        console.error('[chat]', err);
-          // turn the streaming bubble into an error bubble
-      if (aid) {
-        editMessage(aid, m => ({
+        console.error(err);
+        editMessage(aid, (m) => ({
           ...m,
           content: '⚠️ Something went wrong.',
           meta: { ...m.meta, streaming: false, error: true },
         }));
+        setError('request_failed');
+      } finally {
+        setIsTyping(false);
       }
-      setError('request_failed');
-    } finally {
-      setIsTyping(false);
-    }
-  },
-  [cid, setCid, addMessage, editMessage],
-);
-
-  const retryLast = useCallback(
-    () => lastQuery && sendMessage(lastQuery),
-    [lastQuery, sendMessage],
+    },
+    [cid, isAuthenticated, getAccessToken, addMessage, editMessage, setCid, isLoadingFromHistory]
   );
+
+  const retryLast = useCallback(() => lastQuery && sendMessage(lastQuery), [lastQuery, sendMessage]);
 
   return { messages, sendMessage, retryLast, clearChat, isTyping, error };
 }

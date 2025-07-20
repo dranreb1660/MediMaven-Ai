@@ -1,235 +1,22 @@
-# # ─────────────────────────────────────────────────────────────────────────────
-# # src/backend/app/main.py  —  production FastAPI entry-point (refactored)
-# # ─────────────────────────────────────────────────────────────────────────────
-# from __future__ import annotations
-
-# import os, time, json, hashlib, uuid
-# from contextlib import asynccontextmanager
-# from typing import Dict
-
-# import torch, wandb, weave
-# from fastapi import FastAPI, HTTPException
-# from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.responses import StreamingResponse
-# from sse_starlette.sse import EventSourceResponse  # keep for future upgrades
-
-# from backend.app import config
-# from backend.app.schemas import ChatRequest, ChatResponse, ConversationMessage
-# from backend.services.medimaven import MediMaven
-# from backend.services.generate import Backend
-# from backend.services.caching import InHouseCache
-# from backend.utils import Timer
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 0) Globals & helpers
-# # ────────────────────────────────────────────────────────────────────────
-# bot: MediMaven | None = None                    # singleton RAG engine
-# conversation_store: Dict[str, dict] = {}        # in-memory; replace w/ Redis
-# response_cache = InHouseCache(max_size=500)     # LRU if Redis not configured
-
-# INTENT_SUFFIX = {
-#     "elaborate": " detailed explanation causes pathophysiology",
-#     "prevent":   " preventive measures lifestyle emergency steps",
-#     "scared":    " reassurance prognosis risk statistics",
-# }
-
-# def should_bypass_cache(q: str) -> bool:
-#     return any(t in q.lower() for t in ("update", "latest", "current",
-#                                         "new", "emergency", "urgent"))
-
-# def enhance_query(history: list, q: str) -> str:
-#     suf = next((v for k, v in INTENT_SUFFIX.items() if k in q.lower()), "")
-#     stitched_history = " ".join(f"{t['user']} {t['assistant']}" for t in history[-3:])
-#     return f"{stitched_history} {q} {suf}".strip()
-
-# def update_conv(memory: dict, user: str, assistant: str, k: int = 3):
-#     memory.setdefault("turns", []).append({"user": user, "assistant": assistant})
-#     if len(memory["turns"]) > k:
-#         memory["turns"] = memory["turns"][-k:]
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 1) FastAPI app + lifecycle
-# # ────────────────────────────────────────────────────────────────────────
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     global bot, response_cache
-
-#     # 1. cache backend (Redis if URL provided)
-#     if config.REDIS_URL:
-#         import redis.asyncio as redis
-#         redis_client = redis.from_url(config.REDIS_URL)
-
-#         class RedisCache:
-#             async def get(self, k): return await redis_client.get(k)
-#             async def set(self, k, v, expire=300): await redis_client.set(k, v, ex=expire)
-#         response_cache = RedisCache()  # type: ignore
-
-#     # 2. initialise MediMaven engine
-#     backend_choice = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
-#     bot = MediMaven(backend_choice)
-
-#     if config.ENABLE_MONITORING:
-#         wandb.init(project="Medimaven-rag-production",
-#                    config={"backend": backend_choice.name,
-#                            "model_path": os.getenv("MODEL_PATH", config.MODEL_DIR)})
-#         weave.init("Medimaven-rag-production")
-
-#     print("✅ MediMaven initialised with", backend_choice.name)
-#     yield
-
-#     # 3. graceful shutdown (vLLM engine)
-#     if bot and hasattr(bot.generator, "engine"):
-#         close_fn = getattr(bot.generator.engine, "shutdown",
-#                            getattr(bot.generator.engine, "close", None))
-#         if close_fn:
-#             await close_fn()
-#             print("🛑 vLLM engine shut down")
-
-# app = FastAPI(lifespan=lifespan)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=config.ALLOWED_ORIGINS,
-#     allow_credentials=True,
-#     allow_methods=["GET", "POST", "OPTIONS"],
-#     allow_headers=["*"],
-# )
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 2) Health
-# # ────────────────────────────────────────────────────────────────────────
-# @app.get("/health")
-# def health_check(): return {"status": "ok"}
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 3) Helper that BOTH routes share (full RAG pipeline without I/O)
-# # ────────────────────────────────────────────────────────────────────────
-# async def process_query(req: ChatRequest) -> tuple[dict, str, dict]:
-#     """
-#     Returns:
-#         result      – dict from bot.answer(...)   (answer  + citations)
-#         cid         – conversation id
-#         memory      – mutable conversation history entry
-#     """
-#     if bot is None:
-#         raise HTTPException(503, "RAG engine not initialised")
-
-#     cid = req.conversation_id or str(uuid.uuid4())
-#     memory = conversation_store.get(cid, {"turns": []})
-#     first_turn = len(memory["turns"]) == 0
-
-#     stitched_q = req.query if first_turn else await bot.rewrite_followup(req.query, memory["turns"])
-#     stitched_q = enhance_query(memory["turns"], stitched_q)
-
-#     # cache key: query + last 2 user messages
-#     key_src = stitched_q + "|".join(t["user"] for t in memory["turns"][-2:])
-#     cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
-
-#     result, cache_hit = None, False
-#     if config.ENABLE_CACHING and not should_bypass_cache(stitched_q):
-#         result = await response_cache.get(cache_key)  # type: ignore
-
-#     if not result:
-#         result = await bot.answer(stitched_q)         # { answer, citations }
-#         if config.ENABLE_CACHING:
-#             await response_cache.set(cache_key, result)  # type: ignore
-#     else:
-#         cache_hit = True
-
-#     # prepend welcome for first turn
-#     if first_turn:
-#         result = result.copy()
-#         result["answer"] = "👋 Welcome to MediMaven.\n" + result["answer"]
-
-#     # update conversation store
-#     update_conv(memory, req.query, result["answer"])
-#     conversation_store[cid] = memory
-
-#     return result, cid, memory, cache_hit
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 4) Legacy JSON endpoint  (kept for backward-compat)
-# # ────────────────────────────────────────────────────────────────────────
-# @app.post("/chat", response_model=ChatResponse)
-# async def chat_endpoint(req: ChatRequest):
-#     timer = Timer()
-#     try:
-#         result, cid, memory, cache_hit = await process_query(req)
-#         return ChatResponse(
-#             answer=result["answer"],
-#             citations=result["citations"],
-#             latency=round(timer.elapsed(), 3),
-#             cache_hit=cache_hit,
-#             conversation_id=cid,
-#             messages=[ConversationMessage(**t) for t in memory["turns"]],
-#         )
-#     except Exception as e:
-#         raise HTTPException(500, f"Processing error: {e}")
-
-# # ────────────────────────────────────────────────────────────────────────
-# # 5) NEW /chat/stream  (single-call SSE with meta frame)
-# # ────────────────────────────────────────────────────────────────────────
-# @app.post("/chat/stream")
-# async def chat_stream(req: ChatRequest):
-#     """
-#     Streams tokens as they are generated.
-#     Final frame includes the same metadata as /chat so frontend
-#     never needs a follow-up call.
-#     Latency is measured **until the first token is yielded**.
-#     """
-#     if bot is None:
-#         raise HTTPException(503, "RAG engine not initialised")
-
-#     # reuse all query-handling, cache, rewrite logic
-#     result, cid, memory, cache_hit = await process_query(req)
-
-#     async def event_gen():
-#         t0 = time.perf_counter()
-#         first_token_sent, first_latency = False, 0.0
-
-#         # If the response came from cache, stream it token-by-token quickly
-#         if cache_hit:
-#             for tok in result["answer"].split():
-#                 if not first_token_sent:
-#                     first_latency = time.perf_counter() - t0
-#                     first_token_sent = True
-#                 yield f"data: {json.dumps({'token': tok + ' '})}\n\n"
-#                 await asyncio.sleep(0.005)
-#         else:
-#             async for tok in bot.stream_answer(req.query):
-#                 if not first_token_sent:
-#                     first_latency = time.perf_counter() - t0
-#                     first_token_sent = True
-#                 yield f"data: {json.dumps({'token': tok})}\n\n"
-
-#         meta = {
-#             "done": True,
-#             "answer": result["answer"],
-#             "citations": result["citations"],
-#             "latency": round(first_latency, 3),
-#             "conversation_id": cid,
-#             "messages": memory["turns"],
-#             "cache_hit": cache_hit,
-#         }
-#         yield f"data: {json.dumps(meta)}\n\n"
-
-#     return StreamingResponse(event_gen(),
-#                              media_type="text/event-stream")
-    
-    
-    
-    # ─────────────────────────────────────────────────────────────────────────────
-# src/backend/app/main.py   – FastAPI entry-point with SSE
+# src/backend/app/main.py – FastAPI entry-point with SSE (stateless, history-driven)
 # ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
-
-import os, json, time, asyncio, hashlib, uuid
+import os, json, time, hashlib, uuid, re
+import asyncio
 from contextlib import asynccontextmanager
-from typing import Dict
+from typing import Optional, Dict, Any, AsyncGenerator
+from datetime import datetime, timezone
 
-import torch, wandb, weave, re, string
-from fastapi import FastAPI, HTTPException
+import torch, wandb, weave
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select, func, text, cast
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import bindparam
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from pydantic import ValidationError
 
 from backend.app import config
 from backend.app.schemas import ChatRequest, ChatResponse, ConversationMessage
@@ -237,21 +24,28 @@ from backend.services.medimaven import MediMaven
 from backend.services.generate import Backend
 from backend.services.caching import InHouseCache
 from backend.utils import Timer
+from backend.models import Conversation
+from backend.services.db import get_db
+from backend.auth import get_current_user_optional, get_current_user
+from backend.utils import get_logger
+# ─── Setup Logging ──────────────────────────────────────────────────────────
 
-# ─── globals ────────────────────────────────────────────────────────────────
-bot: MediMaven | None = None
-conversation_store: Dict[str, dict] = {}
-response_cache: InHouseCache | any = InHouseCache(max_size=500)
+logger = get_logger(__name__)
+# ─── Constants & Configuration ──────────────────────────────────────────────
+MAX_QUERY_LENGTH = 10000
+MAX_HISTORY_TURNS = 50  # Frontend history for follow-ups
+MAX_CACHE_KEY_LENGTH = 250
+CACHE_TTL_SECONDS = 300
+DB_RETRY_ATTEMPTS = 3
+DB_RETRY_DELAY = 0.5
 
-def update_conv(mem: dict, user: str, assistant: str, k: int = 3):
-    mem.setdefault("turns", []).append({"user": user, "assistant": assistant})
-    if len(mem["turns"]) > k:
-        mem["turns"] = mem["turns"][-k:]
+# Database history management
+MAX_THREADS_PER_USER = 20
+MAX_TURNS_PER_THREAD = 50
 
-def should_bypass(q: str):  # simple heuristic
-    return any(t in q.lower() for t in ("update", "latest", "current",
-                                        "new", "emergency", "urgent"))
-
+# ─── Globals ────────────────────────────────────────────────────────────────
+bot: Optional[MediMaven] = None
+response_cache: InHouseCache | Any = InHouseCache(max_size=500)
 
 RE_CONTRACTIONS = [
     (re.compile(r"\b([A-Za-z]+)\s+n’t\b", re.I), r"\1n’t"),   # don’t, can’t
@@ -262,207 +56,826 @@ RE_CONTRACTIONS = [
     (re.compile(r"\b([A-Za-z]+)\s+ve\b",   re.I), r"\1’ve"),  # we’ve
 ]
 
+def should_bypass(q: str) -> bool:
+    """Check if query should bypass cache due to time-sensitive keywords."""
+    if not q or not isinstance(q, str):
+        return False
+    bypass_terms = ("update", "latest", "current", "new", "emergency", "urgent", "today", "now")
+    return any(term in q.lower() for term in bypass_terms)
+
 def postprocess(text: str) -> str:
-    # collapse " . [3]." → " [3]."
-    text = re.sub(r"\.\s+\[(\d+)]\.", r" [\1].", text)
+    """Post-process generated text with proper error handling."""
+    if not text or not isinstance(text, str):
+        return ""
+    
+    try:
+        # Clean up citation formatting
+        text = re.sub(r"\.\s+\[(\d+)]\.", r" [\1].", text)
+        
+        # Apply contractions
+        for pat, repl in RE_CONTRACTIONS:
+            text = pat.sub(repl, text)
+        
+        # Capitalize sentences
+        text = re.sub(r"(?:^|[.!?]\s+)(\w)", lambda m: m.group(0).upper(), text)
+        
+        return text.strip()
+    except Exception as e:
+        logger.error(f"Error in postprocess: {e}")
+        return text.strip()
 
-    # contractions
-    for pat, repl in RE_CONTRACTIONS:
-        text = pat.sub(repl, text)
+def validate_conversation_id(cid: str) -> bool:
+    """Validate conversation ID format."""
+    if not cid or not isinstance(cid, str):
+        return False
+    
+    # Check if it's a valid UUID format
+    try:
+        uuid.UUID(cid)
+        return True
+    except ValueError:
+        return False
 
-    # capitalize first letter + after sentence ends
-    def _caps(m):
-        return m.group(0).upper()
-    text = re.sub(r"(?:^|[.!?]\s+)(\w)", _caps, text)
+def sanitize_query(query: str) -> str:
+    """Sanitize user query with length limits and content filtering."""
+    if not query or not isinstance(query, str):
+        raise HTTPException(400, "Query cannot be empty")
+    
+    query = query.strip()
+    if len(query) > MAX_QUERY_LENGTH:
+        raise HTTPException(400, f"Query too long (max {MAX_QUERY_LENGTH} characters)")
+    
+    if not query:
+        raise HTTPException(400, "Query cannot be empty after sanitization")
+    
+    return query
 
-    return text
+def validate_history(history: list) -> list:
+    """Validate and sanitize conversation history."""
+    if not history:
+        return []
+    
+    if len(history) > MAX_HISTORY_TURNS:
+        logger.info(f"History truncated from {len(history)} to {MAX_HISTORY_TURNS} turns")
+        history = history[-MAX_HISTORY_TURNS:]
+    
+    validated_history = []
+    for i, msg in enumerate(history):
+        try:
+            if isinstance(msg, dict):
+                # Ensure required fields exist
+                if "user" not in msg or "assistant" not in msg:
+                    logger.info(f"Skipping invalid history item at index {i}")
+                    continue
+                validated_history.append(msg)
+            else:
+                # Handle Pydantic model
+                validated_history.append(msg.model_dump())
+        except Exception as e:
+            logger.info(f"Error validating history item at index {i}: {e}")
+            continue
+    
+    return validated_history
 
+async def db_retry_wrapper(operation, *args, max_retries: int = DB_RETRY_ATTEMPTS):
+    """Wrapper for database operations with retry logic."""
+    last_exception = None
+    
+    for attempt in range(max_retries):
+        try:
+            return await operation(*args)
+        except (SQLAlchemyError, IntegrityError) as e:
+            last_exception = e
+            logger.info(f"DB operation failed (attempt {attempt + 1}/{max_retries}): {e}")
+            
+            if attempt < max_retries - 1:
+                await asyncio.sleep(DB_RETRY_DELAY * (2 ** attempt))  # Exponential backoff
+            continue
+        except Exception as e:
+            # Non-retryable error
+            logger.error(f"Non-retryable DB error: {e}")
+            raise
+    
+    logger.error(f"DB operation failed after {max_retries} attempts")
+    raise last_exception
 
-# ─── lifespan ───────────────────────────────────────────────────────────────
+class ConversationManager:
+    """Manages conversation history with automatic cleanup and optimization."""
+    
+    def __init__(self, db_session):
+        self.db = db_session
+    
+    async def append_turn_optimized(
+        self, 
+        user: Dict[str, Any], 
+        cid: str, 
+        turn: Dict[str, Any], 
+        first: bool = False
+    ):
+        """Append turn with automatic history management using efficient PostgreSQL operations."""
+        user_id = user["sub"]
+        
+        # Add metadata to turn
+        turn_with_meta = {
+            **turn,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        try:
+            if first:
+                await self._handle_new_conversation(user_id, cid, turn_with_meta)
+            else:
+                await self._append_to_existing_conversation(cid, turn_with_meta)
+            
+            logger.debug(f"✅ Turn appended with history management for cid={cid}")
+            
+        except Exception as e:
+            logger.error(f"History management failed, using fallback: {e}")
+            await self._simple_append_fallback(user_id, cid, turn_with_meta, first)
+    
+    async def _handle_new_conversation(self, user_id: str, cid: str, turn: Dict[str, Any]):
+        """Handle new conversation with thread limit enforcement in single transaction."""
+        async with self.db.begin():
+            # Clean up old threads if needed (single efficient query)
+            cleanup_query = text("""
+                WITH user_conversations AS (
+                    SELECT cid, updated_at,
+                           ROW_NUMBER() OVER (ORDER BY updated_at DESC) as rn
+                    FROM conversations 
+                    WHERE user_id = :user_id
+                ),
+                old_conversations AS (
+                    SELECT cid 
+                    FROM user_conversations 
+                    WHERE rn >= :max_threads
+                )
+                DELETE FROM conversations 
+                WHERE cid IN (SELECT cid FROM old_conversations)
+            """)
+            
+            await self.db.execute(
+                cleanup_query, 
+                {"user_id": user_id, "max_threads": MAX_THREADS_PER_USER}
+            )
+            
+            # Create preview and insert new conversation
+            user_msg = turn.get("user", "")
+            preview = " ".join(user_msg.split()[:6]) if user_msg else "New conversation"
+            preview = preview[:100]
+            
+            stmt = pg_insert(Conversation.__table__).values(
+                cid=cid,
+                user_id=user_id,
+                preview=preview,
+                messages=[turn],
+                created_at=func.now(),
+                updated_at=func.now()
+            )
+            
+            await self.db.execute(stmt)
+    
+    async def _append_to_existing_conversation(self, cid: str, turn: Dict[str, Any]):
+        """Append to existing conversation with turn limit enforcement."""
+        try:
+            # First, get the current conversation
+            stmt = select(Conversation).where(Conversation.cid == cid)
+            result = await self.db.execute(stmt)
+            conversation = result.scalar_one_or_none()
+            
+            if not conversation:
+                raise ValueError(f"Conversation {cid} not found")
+            
+            # Get current messages and append new turn
+            current_messages = conversation.messages or []
+            
+            # Apply turn limit: remove oldest if we're at the limit
+            if len(current_messages) >= MAX_TURNS_PER_THREAD:
+                current_messages = current_messages[1:]  # Remove the first (oldest) message
+            
+            # Add the new turn
+            updated_messages = current_messages + [turn]
+            
+            # Update the conversation
+            conversation.messages = updated_messages
+            conversation.updated_at = func.now()
+            
+            # Commit the changes
+            await self.db.commit()
+            logger.info(f"Successfully appended turn to conversation {cid}")
+            
+        except Exception as e:
+            # Rollback on any error to clean transaction state
+            try:
+                await self.db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Rollback failed: {rollback_error}")
+            
+            logger.error(f"Error appending to conversation {cid}: {e}")
+            raise
+    
+    async def _simple_append_fallback(self, user_id: str, cid: str, turn: Dict[str, Any], first: bool):
+        """Fallback method without history management."""
+        try:
+            one_param = {"one": [turn]}
+            
+            if first:
+                preview = " ".join(turn.get("user", "").split()[:6])[:100]
+                stmt = pg_insert(Conversation.__table__).values(
+                    cid=cid,
+                    user_id=user_id,
+                    preview=preview,
+                    messages=[turn],
+                    created_at=func.now(),
+                    updated_at=func.now()
+                )
+            else:
+                stmt = (
+                    Conversation.__table__.update()
+                    .where(Conversation.cid == cid)
+                    .values(
+                        messages=cast(Conversation.messages, JSONB).op("||")(bindparam("one")),
+                        updated_at=func.now(),
+                    )
+                )
+            
+            await self.db.execute(stmt, one_param)
+            await self.db.commit()
+            logger.info(f"[# simple append fallback]Successfully appended turn to conversation {cid}")
+
+        except Exception as e:
+            logger.error(f"Fallback append failed: {e}")
+
+async def append_turn_to_db(user: Dict[str, Any], cid: str, turn: Dict[str, Any], db, first: bool = False):
+    """Enhanced DB append with automatic history management."""
+    if not user or not cid or not turn:
+        logger.info("Skipping DB append - missing data")
+        return
+    
+    if not validate_conversation_id(cid):
+        logger.error(f"Invalid conversation ID format: {cid}")
+        return
+    
+    try:
+        conv_manager = ConversationManager(db)
+        await conv_manager.append_turn_optimized(user, cid, turn, first)
+        
+    except Exception as e:
+        logger.error(f"Enhanced DB append failed for cid={cid}: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan manager with proper error handling."""
     global bot, response_cache
 
-    if config.REDIS_URL:
-        import redis.asyncio as redis
-        rc = redis.from_url(config.REDIS_URL)
+    try:
+        # ── Optional Redis fallback for response cache ──
+        if config.REDIS_URL:
+            try:
+                import redis.asyncio as redis
+                rc = redis.from_url(config.REDIS_URL)
+                
+                # Test Redis connection
+                await rc.ping()
+                
+                class RedisCache:
+                    def __init__(self, redis_client):
+                        self.redis = redis_client
+                    
+                    async def get(self, k: str):
+                        try:
+                            result = await self.redis.get(k)
+                            return json.loads(result) if result else None
+                        except Exception as e:
+                            logger.info(f"Redis get failed: {e}")
+                            return None
+                    
+                    async def set(self, k: str, v: Any, ex: int = CACHE_TTL_SECONDS):
+                        try:
+                            await self.redis.set(k, json.dumps(v), ex=ex)
+                        except Exception as e:
+                            logger.warning(f"Redis set failed: {e}")
+                
+                response_cache = RedisCache(rc)
+                logger.info("✅ Redis cache initialized")
+            except Exception as e:
+                logger.warning(f"Redis initialization failed, using in-memory cache: {e}")
 
-        class RedisCache:
-            async def get(self, k): return await rc.get(k)
-            async def set(self, k, v, ex=300): await rc.set(k, v, ex=ex)
-        response_cache = RedisCache()  # type: ignore
+        # ── Initialize MediMaven ──
+        backend_choice = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
+        bot = MediMaven(backend_choice)
+        
+        # ── Optional monitoring ──
+        if config.ENABLE_MONITORING:
+            try:
+                wandb.init(project="Medimaven-rag-production", config={"backend": backend_choice.name})
+                weave.init("Medimaven-rag-production")
+                logger.info("✅ Monitoring initialized")
+            except Exception as e:
+                logger.warning(f"Monitoring initialization failed: {e}")
 
-    backend_choice = Backend.VLLM if torch.cuda.is_available() else Backend.TRANSFORMERS
-    bot = MediMaven(backend_choice)
-    print("✅ MediMaven started with", backend_choice.name)
+        # Start background cleanup task for history management
+        cleanup_task = asyncio.create_task(periodic_cleanup_task())
 
-    if config.ENABLE_MONITORING:
-        wandb.init(project="Medimaven-rag-production",
-                   config={"backend": backend_choice.name,
-                           "model_path": os.getenv("MODEL_PATH", config.MODEL_DIR)})
-        weave.init("Medimaven-rag-production")
+        logger.info(f"✅ MediMaven started with {backend_choice.name}")
+        yield
 
-    yield  # ── application runs ──
+    except Exception as e:
+        logger.error(f"Startup failed: {e}")
+        raise
+    finally:
+        # ── Cleanup ──
+        try:
+            # Cancel background cleanup task
+            if 'cleanup_task' in locals():
+                cleanup_task.cancel()
+                try:
+                    await cleanup_task
+                except asyncio.CancelledError:
+                    pass
 
-    if bot and hasattr(bot.generator, "engine"):
-        close_fn = getattr(bot.generator.engine,
-                           "shutdown",
-                           getattr(bot.generator.engine, "close", None))
-        if close_fn: await close_fn()
+            if bot and hasattr(bot.generator, "engine"):
+                shutdown = getattr(bot.generator.engine, "shutdown", None) or getattr(bot.generator.engine, "close", None)
+                if shutdown:
+                    await shutdown()
+            
+            if hasattr(response_cache, 'redis'):
+                await response_cache.redis.close()
+                
+            logger.info("✅ Cleanup completed")
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
 
-app = FastAPI(lifespan=lifespan)
+async def periodic_cleanup_task():
+    """Background task for periodic history cleanup."""
+    while True:
+        try:
+            db_gen = get_db()
+            db = await db_gen.__anext__()
+            
+            try:
+                # Simple cleanup: delete old conversations beyond limit per user
+                cleanup_query = text("""
+                    DELETE FROM conversations 
+                    WHERE cid NOT IN (
+                        SELECT cid FROM conversations 
+                        WHERE user_id = conversations.user_id 
+                        ORDER BY updated_at DESC 
+                        LIMIT :max_threads
+                    )
+                """)
+                
+                result = await db.execute(cleanup_query, {"max_threads": MAX_THREADS_PER_USER})
+                await db.commit()
+                
+                if result.rowcount > 0:
+                    logger.info(f"Periodic cleanup: {result.rowcount} old threads removed")
+                    
+            finally:
+                await db.close()
+            
+            # Run cleanup every hour
+            await asyncio.sleep(3600)
+            
+        except Exception as e:
+            logger.error(f"Periodic cleanup error: {e}")
+            await asyncio.sleep(3600)
+
+# ─── FastAPI Application ────────────────────────────────────────────────────
+app = FastAPI(
+    lifespan=lifespan,
+    title="MediMaven RAG API",
+    description="Medical AI Assistant with RAG capabilities",
+    version="1.0.0"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─── shared RAG pipeline (non-stream) ───────────────────────────────────────
-async def run_rag(req: ChatRequest):
+async def run_rag(req: ChatRequest) -> tuple:
+    """Core RAG logic with comprehensive error handling."""
     if bot is None:
-        raise HTTPException(503, "RAG engine not initialised")
+        raise HTTPException(503, "RAG engine not initialized")
 
-    cid  = req.conversation_id or str(uuid.uuid4())
-    mem  = conversation_store.get(cid, {"turns": []})
-    first_turn = not mem["turns"]
+    try:
+        # 1) Validate and sanitize input
+        query = sanitize_query(req.query)
+        cid = req.conversation_id or str(uuid.uuid4())
+        
+        if req.conversation_id and not validate_conversation_id(req.conversation_id):
+            raise HTTPException(400, "Invalid conversation ID format")
 
-    stitched_q = req.query if first_turn else \
-        await bot.rewrite_followup(req.query, mem["turns"])
+        # 2) Validate and seed memory from client history
+        validated_history = validate_history(req.history or [])
+        mem = {"turns": validated_history}
+        first = not mem["turns"]
 
-    # simple two-turn cache key
-    key_src = stitched_q + "|".join(t["user"] for t in mem["turns"][-2:])
-    cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
+        # 3) Rewrite follow-up if needed
+        try:
+            q = query if first else await bot.rewrite_followup(query, mem["turns"])
+        except Exception as e:
+            logger.warning(f"Follow-up rewrite failed, using original query: {e}")
+            q = query
 
-    result, cache_hit = None, False
-    if config.ENABLE_CACHING and not should_bypass(stitched_q):
-        result = await response_cache.get(cache_key)  # type: ignore
+        # 4) Generate cache key with length validation
+        key_parts = [q] + [t.get("user", "") for t in mem["turns"][-2:]]
+        key_src = "|".join(filter(None, key_parts))
+        if len(key_src) > MAX_CACHE_KEY_LENGTH:
+            key_src = key_src[:MAX_CACHE_KEY_LENGTH]
+        
+        cache_key = f"resp:{hashlib.sha256(key_src.encode('utf-8')).hexdigest()}"
 
-    if not result:
-        result = await bot.answer_rag(stitched_q)
-        if config.ENABLE_CACHING:
-            await response_cache.set(cache_key, result)  # type: ignore
-    else:
-        cache_hit = True
+        # 5) Attempt cache retrieval
+        result = None
+        cache_hit = False
+        
+        if config.ENABLE_CACHING and not should_bypass(q):
+            try:
+                result = await response_cache.get(cache_key)
+                cache_hit = bool(result)
+            except Exception as e:
+                logger.warning(f"Cache retrieval failed: {e}")
 
-    if first_turn:
-        result = result.copy()
-        result["answer"] = "👋 Welcome to MediMaven.\n" + result["answer"]
+        # 6) Generate answer if not cached
+        if not result:
+            try:
+                result = await bot.answer_rag(q)
+                
+                # Cache the result
+                if config.ENABLE_CACHING:
+                    try:
+                        await response_cache.set(cache_key, result)
+                    except Exception as e:
+                        logger.warning(f"Cache storage failed: {e}")
+            except Exception as e:
+                logger.error(f"RAG answer generation failed: {e}")
+                raise HTTPException(500, "Failed to generate response")
 
-    update_conv(mem, req.query, result["answer"])
-    conversation_store[cid] = mem
-
-    return result, cid, mem, cache_hit
-
-# ─── health ────────────────────────────────────────────────────────────────
-@app.get("/health")
-def health(): return {"status": "ok"}
-
-# ─── legacy JSON endpoint ──────────────────────────────────────────────────
-@app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
-    timer = Timer()
-    result, cid, mem, cache_hit = await run_rag(req)
-    return ChatResponse(
-        answer          = result["answer"],
-        citations       = result["citations"],
-        latency         = round(timer.elapsed(), 3),
-        cache_hit       = cache_hit,
-        conversation_id = cid,
-        messages        = [ConversationMessage(**t) for t in mem["turns"]],
-    )
-
-# ─── streaming endpoint (single-call, first-turn welcome, cache support) ────
-@app.post("/chat/stream")
-async def chat_stream(req: ChatRequest):
-    if bot is None:
-        raise HTTPException(503, "RAG engine not initialised")
-
-    # ── replicate run_rag() logic WITHOUT full generation ───────────────
-    cid  = req.conversation_id or str(uuid.uuid4())
-    mem  = conversation_store.get(cid, {"turns": []})
-    first = not mem["turns"]
-
-    stitched_q = req.query if first else \
-        (print("Rewriting follow-up query..."), await bot.rewrite_followup(req.query, mem["turns"]))[1]
-
-    key_src  = stitched_q + "|".join(t["user"] for t in mem["turns"][-2:])
-    cache_key = f"resp:{hashlib.sha256(key_src.encode()).hexdigest()}"
-
-    cached, cache_hit = None, False
-    if config.ENABLE_CACHING and not should_bypass(stitched_q):
-        cached = await response_cache.get(cache_key)    # type: ignore
-
-    if cached:
-        # fast path – stream cached answer word-by-word
-        ranked_docs = []     # already embedded in cached['citations']
-        prompt      = None
-        cache_hit   = True
-    else:
-        ranked_docs, prompt = await bot.prepare_stream(stitched_q)
-        cache_hit           = False
-
-    # provisional assistant message in history
-    update_conv(mem, req.query, "")
-    conversation_store[cid] = mem
-
-    # ── streaming coroutine ─────────────────────────────────────────────
-    async def events():
-        t0 = time.perf_counter()
-        latency_first, answer_buf = None, ""
-
-        # 1) optionally prepend welcome
+        # 7) Add welcome message for first turn
         if first:
-            welcome = "👋 Welcome to MediMaven.\n"
-            answer_buf += welcome
-            yield f"data: {json.dumps({'token': welcome})}\n\n"
+            result = result.copy()
+            result["answer"] = "👋 Welcome to MediMaven.\n" + result.get("answer", "")
 
-        # 2) send tokens
-        if cache_hit:
-            # cached: stream quickly word-by-word
-            for w in cached["answer"].split(" "):
-                if latency_first is None:
-                    latency_first = time.perf_counter() - t0
-                answer_buf += w + " "
-                yield f"data: {json.dumps({'token': w + ' '})}\n\n"
-        else:
-            async for tok in bot.stream_generator(prompt):
-                if latency_first is None:
-                    latency_first = time.perf_counter() - t0
-                answer_buf += tok
-                yield f"data: {json.dumps({'token': tok}, ensure_ascii=False)}\n\n"
-
-        # 3) finalise history + maybe cache
-        answer_clean = postprocess(bot.clean_text(answer_buf))
-        mem["turns"][-1]["assistant"] = answer_clean
-
-        if not cache_hit and config.ENABLE_CACHING:
-            to_cache = {
-                "answer": answer_clean,
-                "citations": [
-                    {"id": r["id"], "source": r.get("source"),
-                     "url": r.get("url"), "rank": i + 1}
-                    for i, r in enumerate(ranked_docs[:5])
-                ],
-            }
-            await response_cache.set(cache_key, to_cache)   # type: ignore
-
-        # 4) meta frame
-        meta = {
-            "done": True,
-            "answer": answer_clean,
-            "citations": cached["citations"] if cache_hit else [
-                {"id": r["id"], "source": r.get("source"),
-                 "url": r.get("url"), "rank": i + 1}
-                for i, r in enumerate(ranked_docs[:5])
-            ],
-            "latency": round(latency_first or 0, 3),
-            "conversation_id": cid,
-            "messages": mem["turns"],
+        # 8) Append turn to memory
+        new_turn = {
+            "user": query,
+            "assistant": result.get("answer", ""),
+            "citations": result.get("citations", []),
+            "latency": result.get("latency_s"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+        mem["turns"].append(new_turn)
 
-    return StreamingResponse(events(),
-                             media_type="text/event-stream")
+        return result, cid, mem, cache_hit, first
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in run_rag: {e}")
+        raise HTTPException(500, "Internal server error")
+
+@app.get("/health")
+def health():
+    """Health check endpoint."""
+    try:
+        status = {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bot_initialized": bot is not None,
+            "cuda_available": torch.cuda.is_available()
+        }
+        return status
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat_endpoint(
+    req: ChatRequest,
+    request: Request,
+    user=Depends(get_current_user_optional),
+    db=Depends(get_db)
+):
+    """Main chat endpoint with comprehensive error handling."""
+    timer = Timer()
+    
+    try:
+        # Log request details (without sensitive data)
+        client_ip = request.client.host if request.client else "unknown"
+        logger.info(f"Chat request from {client_ip}, query length: {len(req.query)}")
+        
+        result, cid, mem, cache_hit, first = await run_rag(req)
+
+        # Persist conversation turn
+        if user and mem["turns"]:
+            await append_turn_to_db(user, cid, mem["turns"][-1], db, first)
+
+        response = ChatResponse(
+            answer=result.get("answer", ""),
+            citations=result.get("citations", []),
+            latency=round(timer.elapsed(), 3),
+            cache_hit=cache_hit,
+            conversation_id=cid,
+            messages=[ConversationMessage(**t) for t in mem["turns"]],
+        )
+        
+        logger.info(f"Chat response generated: {timer.elapsed():.3f}s, cache_hit: {cache_hit}")
+        return response
+
+    except HTTPException:
+        raise
+    except ValidationError as e:
+        logger.error(f"Validation error: {e}")
+        raise HTTPException(400, f"Invalid request data: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error in chat_endpoint: {e}")
+        raise HTTPException(500, "Internal server error")
+
+@app.post("/chat/stream")
+async def chat_stream(
+    req: ChatRequest,
+    request: Request,
+    user=Depends(get_current_user_optional),
+    db=Depends(get_db)
+):
+    """Streaming chat endpoint with robust error handling."""
+    if bot is None:
+        raise HTTPException(503, "RAG engine not initialized")
+
+    try:
+        client_ip = request.client.host if request.client else "unknown"
+        logger.info(f"Stream request from {client_ip}")
+
+        # Validate and prepare data
+        query = sanitize_query(req.query)
+        cid = req.conversation_id or str(uuid.uuid4())
+        
+        validated_history = validate_history(req.history or [])
+        mem = {"turns": validated_history}
+        first = not mem["turns"] or not mem["turns"][0].get("assistant")
+
+
+        # Rewrite and cache logic (similar to run_rag)
+        try:
+            q = query if first else await bot.rewrite_followup(query, mem["turns"])
+            logger.info(f"Rewritten query: {q}")
+        except Exception as e:
+            logger.warning(f"Follow-up rewrite failed: {e}")
+            q = query
+
+        key_parts = [q] + [t.get("user", "") for t in mem["turns"][-2:]]
+        key_src = "|".join(filter(None, key_parts))
+        if len(key_src) > MAX_CACHE_KEY_LENGTH:
+            key_src = key_src[:MAX_CACHE_KEY_LENGTH]
+        
+        cache_key = f"resp:{hashlib.sha256(key_src.encode('utf-8')).hexdigest()}"
+        
+        cached = None
+        cache_hit = False
+        
+        if config.ENABLE_CACHING and not should_bypass(q):
+            try:
+                cached = await response_cache.get(cache_key)
+                cache_hit = bool(cached)
+            except Exception as e:
+                logger.warning(f"Cache retrieval failed: {e}")
+
+        # Prepare streaming
+        if cache_hit:
+            ranked_docs, prompt = [], None
+        else:
+            try:
+                ranked_docs, prompt = await bot.prepare_stream(q)
+            except Exception as e:
+                logger.error(f"Stream preparation failed: {e}")
+                raise HTTPException(500, "Failed to prepare stream")
+
+        # Add placeholder turn
+        mem["turns"].append({"user": query, "assistant": ""})
+
+        async def events() -> AsyncGenerator[str, None]:
+            t0 = time.perf_counter()
+            first_latency = None
+            buffer = ""
+            
+            try:
+                # Welcome message
+                if first:
+                    welcome = "👋 Welcome to MediMaven.\n"
+                    buffer += welcome
+                    yield f"data: {json.dumps({'token': welcome}, ensure_ascii=False)}\n\n"
+
+                # Stream tokens
+                if cache_hit and cached:
+                    # Stream cached response word by word
+                    words = cached.get("answer", "").split(" ")
+                    for word in words:
+                        if first_latency is None:
+                            first_latency = time.perf_counter() - t0
+                        
+                        token = word + " "
+                        buffer += token
+                        yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+                        await asyncio.sleep(0.01)  # Simulate streaming delay
+                else:
+                    # Stream from generator
+                    try:
+                        async for tok in bot.stream_generator(prompt):
+                            if first_latency is None:
+                                first_latency = time.perf_counter() - t0
+                            
+                            buffer += tok
+                            yield f"data: {json.dumps({'token': tok}, ensure_ascii=False)}\n\n"
+                    except Exception as e:
+                        logger.error(f"Streaming generation failed: {e}")
+                        error_msg = "Sorry, I encountered an error while generating the response."
+                        yield f"data: {json.dumps({'token': error_msg}, ensure_ascii=False)}\n\n"
+                        buffer = error_msg
+
+                # Finalize response
+                answer = postprocess(bot.clean_text(buffer)) if hasattr(bot, 'clean_text') else postprocess(buffer)
+                
+                citations = []
+                if cache_hit and cached:
+                    citations = cached.get("citations", [])
+                else:
+                    citations = [
+                        {
+                            "id": r.get("id"),
+                            "source": r.get("source"),
+                            "url": r.get("url"),
+                            "rank": i + 1
+                        }
+                        for i, r in enumerate(ranked_docs[:5])
+                    ]
+
+                latency = round(first_latency or 0, 3)
+
+                # Update memory
+                turn_data = {
+                    "user": query,
+                    "assistant": answer,
+                    "citations": citations,
+                    "latency": latency,
+                }
+                
+                mem["turns"][-1] = turn_data
+
+                # Persist to database
+                if user:
+                    await append_turn_to_db(user, cid, turn_data, db, first)
+
+                # Cache new response
+                if not cache_hit and config.ENABLE_CACHING:
+                    try:
+                        await response_cache.set(cache_key, {
+                            "answer": answer,
+                            "citations": citations
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to cache response: {e}")
+
+                # Final metadata
+                meta = {
+                    "done": True,
+                    "answer": answer,
+                    "citations": citations,
+                    "latency": latency,
+                    "conversation_id": cid,
+                    "messages": mem["turns"],
+                }
+                yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+
+            except Exception as e:
+                logger.error(f"Error in streaming events: {e}")
+                error_response = {
+                    "error": True,
+                    "message": "An error occurred during streaming",
+                    "conversation_id": cid
+                }
+                yield f"data: {json.dumps(error_response)}\n\n"
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in chat_stream: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
+
+@app.get("/chat/list")
+async def chat_list(user=Depends(get_current_user), db=Depends(get_db)):
+    """List user conversations with robust error handling."""
+    try:
+        # Start with a fresh transaction by rolling back any existing failed transaction
+        try:
+            await db.rollback()
+        except Exception:
+            pass  # Ignore rollback errors if no transaction exists
+        
+        # Use a simple, reliable query that works across different PostgreSQL setups
+        query = select(
+            Conversation.cid,
+            Conversation.preview,
+            Conversation.messages,
+            Conversation.updated_at
+        ).where(
+            Conversation.user_id == user["sub"]
+        ).order_by(
+            Conversation.updated_at.desc()
+        ).limit(MAX_THREADS_PER_USER)
+        
+        result = await db.execute(query)
+        rows = result.fetchall()
+        
+        conversations = []
+        for row in rows:
+            try:
+                # Handle messages safely
+                messages = row.messages or []
+                if isinstance(messages, str):
+                    try:
+                        messages = json.loads(messages)
+                    except (json.JSONDecodeError, TypeError):
+                        messages = []
+                
+                conversations.append({
+                    "cid": row.cid,
+                    "preview": row.preview or "No preview",
+                    "messages": messages,
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "message_count": len(messages) if isinstance(messages, list) else 0
+                })
+                
+            except Exception as e:
+                logger.warning(f"Error processing conversation {row.cid}: {e}")
+                # minimal entry to avoid losing the conversation completely
+                conversations.append({
+                    "cid": row.cid,
+                    "preview": "Error loading conversation",
+                    "messages": [],
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "message_count": 0
+                })
+        
+        await db.commit()  # Ensure clean transaction state
+        logger.info(f"Retrieved {len(conversations)} conversations for user {user['sub']}")
+        return conversations
+
+    except Exception as e:
+        logger.error(f"Error listing conversations: {e}")
+        
+        # Ensure clean state for next request
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        
+        # Return empty list to keep frontend working
+        return []
+
+@app.post("/chat/end")
+async def chat_end(payload: dict, user=Depends(get_current_user_optional)):
+    """End conversation endpoint with validation."""
+    try:
+        cid = payload.get("conversation_id")
+        logger.info(f"Ending conversation: {cid} for user {user['sub'] if user else 'anonymous'}")
+        if not cid:
+            raise HTTPException(400, "Missing conversation_id")
+        
+        if not validate_conversation_id(cid):
+            raise HTTPException(400, "Invalid conversation_id format")
+        
+        logger.info(f"Conversation ended: {cid}")
+        return {"status": "ended", "cid": cid}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error ending conversation: {e}")
+        raise HTTPException(500, "Failed to end conversation")
+
+# Add error handlers
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc: Exception):
+    logger.error(f"Internal server error: {exc}")
+    return {"error": "Internal server error", "detail": str(exc)}
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    logger.error(f"Validation error: {exc}")
+    return {"error": "Validation error", "detail": str(exc)}

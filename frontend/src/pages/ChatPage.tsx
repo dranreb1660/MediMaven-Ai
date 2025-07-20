@@ -4,11 +4,10 @@ import ChatBox from '../components/chat/ChatBox';
 
 export default function ChatPage() {
   const location = useLocation();
-  // grab once; after welcome→chat this state is null on reload
-  const prefill = useMemo(
-    () => (location.state as { prefill?: string } | null)?.prefill,
+  const state = useMemo(
+    () => location.state as { prefill?: string } | null,
     [] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  return <ChatBox prefill={prefill} />;
+  return <ChatBox prefill={state?.prefill} />;
 }

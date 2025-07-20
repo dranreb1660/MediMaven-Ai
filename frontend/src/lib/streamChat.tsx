@@ -11,7 +11,7 @@ export interface DoneChunk  { type: 'done';  meta: any }
 export async function* streamChat(
   body: unknown,
   apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
-// apiBase = "https://8df32270f4f9.ngrok-free.app", // for testing
+token?: string
 
 ) {
   const res = await fetch(`${apiBase}/chat/stream`, {
@@ -19,6 +19,7 @@ export async function* streamChat(
     headers: {
       'Content-Type' : 'application/json',
       'Accept'       : 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });

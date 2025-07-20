@@ -1,10 +1,12 @@
+// src/context/AuthContext.tsx
 import React from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { useNavigate } from 'react-router-dom';
+import { useChatStore } from '../store/useChatStore';
 
-const domain     = import.meta.env.VITE_AUTH0_DOMAIN!;
-const clientId   = import.meta.env.VITE_AUTH0_CLIENT_ID!;
-const audience   = import.meta.env.VITE_AUTH0_AUDIENCE!;
+const domain   = import.meta.env.VITE_AUTH0_DOMAIN!;
+const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID!;
+const audience = import.meta.env.VITE_AUTH0_AUDIENCE!;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
@@ -14,34 +16,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       domain={domain}
       clientId={clientId}
       authorizationParams={{
-        redirect_uri: window.location.origin,
         audience,
+        redirect_uri: window.location.origin + '/chat',
       }}
-      onRedirectCallback={(appState) => navigate(appState?.returnTo || '/')}
-      cacheLocation="localstorage"       /* keeps session across tabs */
+      onRedirectCallback={() => {
+        navigate('/chat');
+      }}
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
     >
       {children}
     </Auth0Provider>
   );
 }
 
-/* typed helpers the rest of the app can import */
 export const useAuth = () => {
-  const {
-    isAuthenticated,
-    isLoading,
-    loginWithRedirect,
-    logout,
-    getAccessTokenSilently,
-    user,
-  } = useAuth0();
+  const { isAuthenticated, isLoading,
+          loginWithRedirect, logout: rawLogout,
+          getAccessTokenSilently, user } = useAuth0();
+  const navigate = useNavigate();
+
+  const login = () => {
+    // <— simply call the provider’s configured redirect/audience
+    return loginWithRedirect();
+  };
+
+  const logout = () => {
+    rawLogout({
+      logoutParams: {
+        federated: true,
+        // next return to /chat
+        returnTo: window.location.origin + '/chat',
+      },
+    });
+    useChatStore.getState().reset();
+  };
 
   return {
     isAuthenticated,
     isLoading,
     user,
-    login: () => loginWithRedirect(),
-    logout: () => logout({ logoutParams: { returnTo: window.location.origin } }),
+    login,
+    logout,
     getAccessToken: getAccessTokenSilently,
   };
 };

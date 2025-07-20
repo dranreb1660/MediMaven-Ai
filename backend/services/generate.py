@@ -22,7 +22,6 @@ except ImportError:
 
 LLM_PATH, quant, dtype = pick_model()   # pick_model already uses config.FP16_DIR, etc.
 
-# print(f"LLM_PATH --------: {LLM_PATH}")
 class Backend(Enum):
     TRANSFORMERS = auto()
     AWQ          = auto()

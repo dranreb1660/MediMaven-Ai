@@ -23,3 +23,9 @@ html, body {
 .animate-fade-in {
   animation: fadeInScale 200ms ease-out forwards;
 }
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); opacity: 0.8; }
+  to   { transform: translateX(0);      opacity: 1;   }
+}
+.animate-slide-in { animation: slideIn .3s ease-out forwards; }
