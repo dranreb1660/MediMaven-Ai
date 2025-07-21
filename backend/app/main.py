@@ -538,7 +538,7 @@ async def chat_stream(
         # Rewrite and cache logic (KEEP ORIGINAL)
         try:
             q = query if first else await bot.rewrite_followup(query, mem["turns"])
-            logger.info(f"Rewritten query: {q}")
+            logger.info(f"Rewritten query: {q}") if not first else logger.info("No rewrite needed") 
         except Exception as e:
             logger.warning(f"Follow-up rewrite failed: {e}")
             q = query

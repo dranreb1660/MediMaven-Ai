@@ -1,24 +1,30 @@
 import { useEffect, useRef } from 'react';
 import ChatBubble from './ChatBubble';
-import type { Message } from '../../types/chat';
+import type { Message } from '../../types/Types';
 
-type Props = {
+export interface MessageListProps {
   messages: Message[];
   isTyping: boolean;
   retry: () => void;
-};
+}
 
-export default function MessageList({ messages, isTyping, retry }: Props) {
+export default function MessageList({
+  messages,
+  isTyping,
+  retry,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  /* auto-scroll */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto px-0 sm:px-4">
-      {messages.map(m => (
-        <ChatBubble key={m.id} {...m} retry={retry} />
+      {messages.map((m, idx) => (
+        /*  fallback to array index when m.id is missing  */
+        <ChatBubble key={m.id ?? `row-${idx}`} {...m} retry={retry} />
       ))}
 
       {isTyping && (

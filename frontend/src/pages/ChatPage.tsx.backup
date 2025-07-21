@@ -1,0 +1,27 @@
+import { useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
+import ChatBox from '../components/chat/ChatBox';
+
+export default function ChatPage() {
+  const location = useLocation();
+  
+  // Debug immediately - don't wait for useMemo
+  console.log('ChatPage: IMMEDIATE location.state:', location.state);
+  console.log('ChatPage: location.pathname:', location.pathname);
+  console.log('ChatPage: location.search:', location.search);
+
+  /** Grab the message passed from WelcomeCard (only on first mount). */
+  const sendMsgOnce = useMemo(
+    () => {
+      console.log('ChatPage: useMemo running with location.state:', location.state);
+      const message = (location.state as { sendMessage?: string } | null)?.sendMessage;
+      console.log('ChatPage: extracted message from state:', message);
+      return message;
+    },
+    [location.state] // Let's include location.state as dependency to see if it changes
+  );
+  
+  console.log('ChatPage: final sendMsgOnce value:', sendMsgOnce);
+
+  return <ChatBox sendMessage={sendMsgOnce} />;
+}

@@ -1,54 +1,51 @@
 import { useRef, useState, useEffect } from 'react';
-import { useChat }       from '../../hooks/useChat';
-import { useChatStore }  from '../../store/useChatStore';
+import { useChat } from '../../hooks/useChat';
 import MessageList from './MessageList';
-import SiteHeader  from '../ui/SiteHeader';
-import Button      from '../ui/Button';
-import Container   from '../layout/Container';
+import SiteHeader from '../ui/SiteHeader';
+import Button from '../ui/Button';
+import Container from '../layout/Container';
 
 type Props = { sendMessage?: string };
 
-export default function ChatBox({ sendMessage: firstMsg }: Props) {
+export default function ChatBox({ sendMessage: initialMessage }: Props) {
   const { messages, sendMessage, retryLast, clearChat, isTyping, error } = useChat();
-  const [input, setInput]   = useState('');
+  const [input, setInput] = useState('');
   const [online, setOnline] = useState(navigator.onLine);
-
+  
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef  = useRef<HTMLTextAreaElement>(null);
-  const firedRef  = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const sentRef = useRef(false);
 
-  /* 1️⃣ Send the carried-over question exactly once */
+  // Send initial message once
   useEffect(() => {
-    if (!firedRef.current && firstMsg) {
-      firedRef.current = true;
-      sendMessage(firstMsg);
+    if (initialMessage && sendMessage && !sentRef.current) {
+      sentRef.current = true;
+      setTimeout(() => sendMessage(initialMessage), 100);
       window.history.replaceState(null, '', '/chat');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialMessage, sendMessage]);
 
-  /* 2️⃣ online/offline indicators */
+  // Online/offline detection
   useEffect(() => {
-    const on  = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener('online',  on);
-    window.addEventListener('offline', off);
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     return () => {
-      window.removeEventListener('online',  on);
-      window.removeEventListener('offline', off);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  /* 3️⃣ autoscroll */
+  // Auto-scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  /* 4️⃣ send from textarea */
-  const doSend = () => {
-    const txt = input.trim();
-    if (!txt || isTyping || !online) return;
-    sendMessage(txt);
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text || isTyping || !online) return;
+    sendMessage(text);
     setInput('');
     setTimeout(() => inputRef.current?.focus(), 80);
   };
@@ -57,7 +54,7 @@ export default function ChatBox({ sendMessage: firstMsg }: Props) {
     <Container>
       <div className="flex justify-center w-full min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="relative min-h-screen w-full max-w-2xl mx-auto flex flex-col bg-white dark:bg-gray-800">
-
+          
           <SiteHeader variant="chat" onClear={clearChat} />
 
           {!online && (
@@ -66,7 +63,6 @@ export default function ChatBox({ sendMessage: firstMsg }: Props) {
             </div>
           )}
 
-          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 pb-4">
             <MessageList messages={messages} isTyping={isTyping} retry={retryLast} />
             {error && (
@@ -80,14 +76,13 @@ export default function ChatBox({ sendMessage: firstMsg }: Props) {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-end gap-3">
+            <div className="flex flex-col xs:flex-row xs:items-end gap-3">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), doSend())}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
                 placeholder="Ask your health question..."
                 disabled={isTyping || !online}
                 maxLength={1000}
@@ -96,9 +91,9 @@ export default function ChatBox({ sendMessage: firstMsg }: Props) {
                 style={{ minHeight: '48px' }}
               />
               <Button
-                onClick={doSend}
+                onClick={handleSend}
                 disabled={!input.trim() || isTyping || !online}
-                className="px-6 py-3"
+                className="px-6 py-3 w-3/5 mx-auto xs:w-auto xs:mx-0 xs:min-w-[100px]"
               >
                 {isTyping ? '⏳' : '📤'}
               </Button>
