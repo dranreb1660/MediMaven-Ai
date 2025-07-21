@@ -1,196 +1,261 @@
-# ────────────────────────────────────────────────────────────────────────────
-# src/backend/services/rag_modules/medimaven.py
-# ────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
-import time, asyncio, weave
-from typing import Dict, List
-
-from deepmultilingualpunctuation import PunctuationModel
+import time, asyncio, weave, logging
+from typing import Dict, List, Tuple, Optional
 
 from backend.services.retrieve import Retriever
-from backend.services.ltr      import Ranker
+from backend.services.ltr import Ranker
 from backend.services.generate import Generator, Backend
 from backend.utils import Timer
-from pydantic import BaseModel, ConfigDict
 
+logger = logging.getLogger(__name__)
 
-class MediMaven(weave.Model):  # Make weave model
-    
-    """MediMaven RAG Engine
-    This class orchestrates the retrieval, ranking, and generation of medical answers.
-    It uses a retriever to fetch relevant passages, a ranker to order them,
-    and a generator to produce the final answer.
-    It also includes a punctuation model for text cleanup.
-    """
-    # model_config = ConfigDict(arbitrary_types_allowed=True)
+class MediMaven(weave.Model):
+    """Production-ready RAG engine with robust error handling"""
     class Config:
         arbitrary_types_allowed = True
-        extra = "allow"  # Important if extra attrs are added later
+        extra = "allow"
+        
     def __init__(self, llm_backend: Backend = Backend.VLLM):
-        super().__init__()  # Weave init
-        # 0) Heavy objects
-        self.retriever = Retriever()   
-        print("✅ Retriever loaded")
-
-        self.ranker     = Ranker(self.retriever)
-        print("✅ Ranker loaded")
-
-        self.generator  = Generator(llm_backend)
-        print(f"✅ Generator loaded ({llm_backend.name})")
-
-        # optional text-cleanup model
-        self.punctuate  = PunctuationModel()
-
-    # ---------------------------------------------------------------------
+        super().__init__()
+        self._initialized = False
+        
+        try:
+            # Initialize components with validation
+            self.retriever = Retriever()
+            self.ranker = Ranker(self.retriever)
+            self.generator = Generator(llm_backend)
+            
+            # Optional punctuation model with fallback
+            self.punctuate = None
+            try:
+                from deepmultilingualpunctuation import PunctuationModel
+                self.punctuate = PunctuationModel()
+            except Exception as e:
+                logger.warning(f"Punctuation model unavailable: {e}")
+            
+            self._initialized = True
+            logger.info("✅ MediMaven initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"MediMaven initialization failed: {e}")
+            self._cleanup()
+            raise RuntimeError(f"Failed to initialize MediMaven: {e}")
+    
     @staticmethod
     def _prompt(query: str, ctx: List[Dict], n: int = 5) -> str:
-        passages = "\n\n".join(f"[{i+1}] {c['text']}" for i, c in enumerate(ctx[:n]))
-        return f"""
-        You are MediMaven, a board-certified virtual physician.
-
-        Style & Structure:
-        • Start with a single-sentence summary.
-        • Then give concise, evidence-based detail (bullet or short-paragraph).
-        • Remain friendly and reassuring.
-
-        Citation rules:
-        • When you use a passage, always cite its number in square brackets — like [2] — exactly where the supporting detail appears in your answer.
-        • If none of the passages are useful, answer confidently from your own knowledge.
-        • Never mention the absence of relevant passages.
-
-        ---
-        Passages:
-        {passages}
-
-        Question: {query}
-
-        Remember: If a detail comes from a passage, cite with [number] at that point in the answer.
-        If it comes from your own knowledge, do **not** cite.
-
-        Answer:
-        """
-
-    # ---------------------------------------------------------------------
-    @weave.op()
-    async def answer(self, query: str, n_ctx: int = 5) -> Dict:
-        t0 = Timer()
-        print(f"\n🔎 Starting query: '{query}'")
+        """Generate prompt with input validation"""
+        if not query.strip():
+            query = "Please provide medical information."
         
-        # Directly test dense search
-        # print("🧪 Running direct dense search test...")
-        # test_results = self.retriever.dense_search("diabetes", top_k=5)
-        # print(f"🧪 Test results: {len(test_results)} documents")
+        # Use only valid context
+        valid_ctx = [c for c in ctx[:n] if c.get('text')]
         
-        print('Retrieving and Ranking...')
-        ranked = await self.ranker.rerank_from_retriever(query)
-        # print(f"📊 Retrieved {len(ranked)} documents")
-        ranked_time = t0.elapsed()
-        print(f"⏱️ Retrieval + Ranking took {ranked_time:.3f} seconds")
-        # Check if we have documents
-        if not ranked:
-            print("⚠️ WARNING: Ranker returned zero documents!")
-            # Return safe response
-            return {
-                "answer": "I couldn't find relevant information for your query. Please try rephrasing or ask about a different medical topic.",
-                "citations": [],
-                "latency_s": round(ranked_time, 3),
-            }
-        
-            
-        print('Prompting...')
-        
-        prompt = self._prompt(query, ranked, n_ctx)
-        prompting_time = t0.elapsed() - ranked_time
-        print(f"⏱️ Prompting took {prompting_time:.3f} seconds")
-        print("prompt: ", prompt)  # Print first 1000 chars for brevity
-        print('Replying...')
-        reply = await self.generator.generate(prompt, max_new_tokens=256)
-        
-        # Handle empty response
-        if not reply.strip():
-            print("⚠️ Warning: Received empty response from LLM")
-            reply = "I couldn't generate a response. Please try again with a different question."
-            
-        gen_time = t0.elapsed() - ranked_time - prompting_time
-        print(f"⏱️ Generation took {gen_time:.3f} seconds")
-        print('done...')
-        latency = t0.elapsed()
-        print(f"Total latency: {latency:.3f} seconds")
-        citations = [
-            {"id": r["id"], "source": r.get("source"), "url": r.get("url"), "rank": i + 1}
-            for i, r in enumerate(ranked[:n_ctx])
-        ]
-        print(f'answer: {reply}')
-        
-        return {
-            "answer": self.clean_text(reply),
-            "citations": citations,
-            "latency_s": latency,
-        }
-    async def _prepare_prompt(self, query: str, n_ctx: int) -> str:
-        """Async prepare prompt while retrieval runs"""
-        return self._prompt(query, [], n_ctx)  # Start with empty context
-    
-    @weave.op()
-    async def rewrite_followup(self, query, history_tail):
-        """Return a stand-alone query for retrieval."""
-        t0 = Timer()
-        prompt = (
-            "Rewrite the USER FOLLOW-UP question into a clear, self-contained question "
-            "This question is FROM the USER to an ASSISTANT, "
-            "that fully incorporates necessary context from the conversation history. "
-            "Do NOT answer, clarify, or ask questions, ONLY rewrite the user's query that will be understandable on its own., no side NOTES or whatever"
-            "\n\n"
-            "Conversation history:\n"
-            f"{history_tail}\n\n"
-            f"USER FOLLOW-UP: {query}\n"
-            "STAND-ALONE QUESTION:"
+        passages = "\n\n".join(
+            f"[{i+1}] {c['text'][:1000]}"  # Limit passage length
+            for i, c in enumerate(valid_ctx)
         )
-        txt = await self.generator.generate(prompt, max_new_tokens=32)
-        latency = t0.elapsed()
-        print(f"⏱️ Query Rewriting took {latency:.3f} seconds")
-        print(f"Rewritten query: {txt}")
         
-        return txt
+        return f"""You are MediMaven, a board-certified virtual physician.
 
-    # ---------------------------------------------------------------------
-    def clean_text(self, text: str) -> str:
-        """Add punctuation & capitalisation with empty check"""
-        if not text.strip():
-            return text
+Style & Structure:
+• Start with a single-sentence summary.
+• Then give concise, evidence-based detail.
+• Remain friendly and reassuring.
+
+Citation rules:
+• When you use a passage, ALWAYS cite its number in square brackets — like [2].
+• If none of the passages are useful, answer confidently from your knowledge.
+
+---
+Passages:
+{passages}
+
+Question: {query}
+
+Answer:"""
+    
+    async def answer_rag(self, query: str, n_ctx: int = 5) -> Dict:
+        """Complete RAG pipeline with comprehensive error handling"""
+        if not self._initialized:
+            return self._error_response("Service temporarily unavailable")
+        
+        t0 = Timer()
+        
         try:
-            return self.punctuate.restore_punctuation(text)
+            # Validate query
+            if not query or not query.strip():
+                return self._error_response("Please provide a valid question")
+            
+            # Retrieve and rank documents
+            ranked = await self.ranker.rerank_from_retriever(query)
+            if not ranked:
+                return {
+                    "answer": "I couldn't find relevant information. Could you rephrase your question?",
+                    "citations": [],
+                    "latency_s": round(t0.elapsed(), 3),
+                }
+            
+            # Generate answer
+            prompt = self._prompt(query, ranked, n_ctx)
+            reply = await self.generator.generate(prompt, max_new_tokens=256)
+            
+            if not reply or not reply.strip():
+                reply = "I'm having trouble generating a response. Please try rephrasing your question."
+            
+            # Prepare citations
+            citations = [
+                {
+                    "id": r.get("id", ""),
+                    "source": r.get("source", ""),
+                    "url": r.get("url", ""),
+                    "rank": i + 1
+                }
+                for i, r in enumerate(ranked[:n_ctx])
+            ]
+            
+            return {
+                "answer": self.clean_text(reply),
+                "citations": citations,
+                "latency_s": round(t0.elapsed(), 3),
+            }
+            
         except Exception as e:
-            print(f"⚠️ Punctuation error: {str(e)}")
-            return text  # Return original if punctuation fails
-
-    # ---------------------------------------------------------------------
-    def close(self):
-        """Graceful shutdown (call from FastAPI /startup)."""
-        if hasattr(self.generator, "engine"):
-            # vLLM backend
-            shutdown_fn = getattr(self.generator.engine, "shutdown", None) or getattr(
-                self.generator.engine, "close", None
-            )
-            if shutdown_fn:
-                shutdown_fn()
-        self.retriever.qdrant_store.close()
-
-
-# ────────────────────────────────────────────────────────────────────────────
-# local smoke-test
-# ────────────────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    async def main():
-        bot = MediMaven(Backend.VLLM)
+            logger.error(f"RAG pipeline failed: {e}")
+            return self._error_response("I encountered an error. Please try again.")
+    
+    async def prepare_stream(self, query: str, n_ctx: int = 5) -> Tuple[List[Dict], str]:
+        """Prepare streaming with error handling"""
+        if not self._initialized:
+            return [], self._prompt("", [], n_ctx)
         
-
-        res = await bot.answer("What causes type 2 diabetes?", n_ctx=5)
-        print("Answer:", res["answer"])
-        print("Citations:", res["citations"])
-        print("Latency (s):", res["latency_s"])
-
-        bot.close()
-
-    asyncio.run(main())
+        t0 = Timer()
+        
+        try:
+            logger.info(f"🔎 Preparing stream for: {query[:100]}...")
+            
+            # Retrieve and rank
+            ranked = await self.ranker.rerank_from_retriever(query)
+            
+            retrieval_time = t0.elapsed()
+            logger.info(f"⏱️ Retrieval completed in {retrieval_time:.3f}s")
+            
+            # Generate prompt
+            prompt = self._prompt(query, ranked, n_ctx)
+            
+            total_time = t0.elapsed()
+            logger.info(f"⏱️ Stream preparation completed in {total_time:.3f}s")
+            
+            return ranked, prompt
+            
+        except Exception as e:
+            logger.error(f"Stream preparation failed: {e}")
+            return [], self._prompt(query, [], n_ctx)
+    
+    async def stream_generator(self, prompt: str, max_new_tokens: int = 128):
+        """Token streaming with error handling"""
+        if not self._initialized:
+            yield "Service temporarily unavailable. "
+            return
+        
+        try:
+            logger.info("🔄 Starting token generation...")
+            
+            token_count = 0
+            async for token in self.generator.stream(prompt, max_new_tokens):
+                yield token
+                token_count += 1
+                
+                # Safety limit
+                if token_count > max_new_tokens * 2:
+                    logger.warning("Token limit exceeded, stopping generation")
+                    break
+            
+            logger.info(f"✅ Token generation completed ({token_count} tokens)")
+            
+        except Exception as e:
+            logger.error(f"Token generation failed: {e}")
+            yield "I encountered an error while generating the response. "
+    
+    async def rewrite_followup(self, query: str, history_tail: List[Dict]) -> str:
+        """Rewrite follow-up queries with simplified logic"""
+        if not self._initialized or not history_tail:
+            return query
+        
+        try:
+            # Limit history to last 2 turns for context
+            recent_history = history_tail[-2:]
+            context = "\n".join([
+                f"User: {turn.get('user', '')}\nAssistant: {turn.get('assistant', '')[:200]}..."
+                for turn in recent_history
+                if turn.get('user') and turn.get('assistant')
+            ])
+            
+            if not context:
+                return query
+            
+            prompt = (
+                "Rewrite the USER FOLLOW-UP question into a clear, self-contained question "
+                "This question is FROM the USER to an ASSISTANT, "
+                "that fully incorporates necessary context from the conversation history. "
+                "Do NOT answer, clarify, or ask questions, ONLY rewrite the user's query that will be understandable by the assistant on its own., no side NOTES or whatever"
+                "\n\n"
+                "Conversation history:" f"{history_tail}\n\n"
+                f"USER FOLLOW-UP: {query}\n"
+                "STAND-ALONE QUESTION:"
+            )
+            
+            result = await self.generator.generate(prompt, max_new_tokens=32)
+            
+            # Validate result
+            if result and len(result.strip()) > 5 and len(result) < 200:
+                logger.info(f"Query rewritten: '{query}' -> '{result}'")
+                return result.strip()
+            
+            return query
+            
+        except Exception as e:
+            logger.warning(f"Follow-up rewrite failed: {e}")
+            return query
+    
+    def clean_text(self, text: str) -> str:
+        """Text cleaning with fallback"""
+        if not text or not text.strip():
+            return text
+        
+        try:
+            # Basic cleanup
+            text = text.strip()
+            
+            # Use punctuation model if available
+            if self.punctuate:
+                text = self.punctuate.restore_punctuation(text)
+            
+            return text
+            
+        except Exception as e:
+            logger.warning(f"Text cleaning failed: {e}")
+            return text.strip()
+    
+    def _error_response(self, message: str) -> Dict:
+        """Generate standardized error response"""
+        return {
+            "answer": message,
+            "citations": [],
+            "latency_s": 0.0,
+        }
+    
+    def _cleanup(self):
+        """Clean up resources"""
+        try:
+            if hasattr(self, 'generator'):
+                self.generator.close()
+            if hasattr(self, 'retriever') and hasattr(self.retriever, 'qdrant_store'):
+                self.retriever.qdrant_store.close()
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+    
+    def close(self):
+        """Public cleanup method"""
+        self._cleanup()
+        self._initialized = False
