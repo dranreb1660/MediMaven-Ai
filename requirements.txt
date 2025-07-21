@@ -19,3 +19,8 @@ uvicorn
 autoawq
 autoawq-kernels
 sentence-transformers
+sqlalchemy[asyncio]
+asyncpg
+alembic
+python-jose[cryptography]
+jwt
