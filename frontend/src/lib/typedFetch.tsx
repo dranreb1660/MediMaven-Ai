@@ -1,11 +1,9 @@
+// src/lib/typedFetch.tsx
 import { z } from 'zod';
 import { paths } from '../types/openapi';
+import { fetchJson } from './fetchJson';
 
-/* -------------------------Base URL----------------------------------------- */
-const API_BASE =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:8000'; // dev fallback
-/* ------------------------------------------------------------------ */
-
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 type ChatPostRequest =
   paths['/chat']['post']['requestBody']['content']['application/json'];
@@ -15,12 +13,12 @@ type ChatPostResponse =
 const ChatResponseSchema = z.object({
   answer: z.string(),
   latency: z.number(),
-  conversation_id: z.string().nullable(),   // ← updated
+  conversation_id: z.string().nullable(),
   citations: z.array(
     z.object({
       id: z.string(),
       source: z.string(),
-      url: z.string().url().nullable(),     // ← updated
+      url: z.string().url().nullable(),
       rank: z.number(),
     }),
   ),
@@ -32,18 +30,16 @@ const ChatResponseSchema = z.object({
   ),
 });
 
-
 export async function postChat(
   body: ChatPostRequest,
 ): Promise<ChatPostResponse> {
-  const res = await fetch(`${API_BASE}/chat`, {      // 👈 prepend base
-    method: 'POST',
-    mode: 'cors',                                    // good practice
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) throw new Error(`Chat API ${res.status}`);
-  const data = await res.json();
+  const data = await fetchJson<ChatPostResponse>(
+    `${API_BASE}/chat`,
+    {
+      method: 'POST',
+      mode: 'cors',
+      body: JSON.stringify(body)
+    }
+  );
   return ChatResponseSchema.parse(data);
 }

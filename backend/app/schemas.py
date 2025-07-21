@@ -1,6 +1,6 @@
 # src/backend/app/schemas.py
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any  # Add explicit imports
+from typing import List, Optional, Dict, Any
 
 class Citation(BaseModel):
     id: str
@@ -8,7 +8,6 @@ class Citation(BaseModel):
     url: Optional[str] = None
     rank: int
 
-# Explicitly define message type for messages field
 class ConversationMessage(BaseModel):
     user: str
     assistant: str
@@ -16,13 +15,14 @@ class ConversationMessage(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     conversation_id: Optional[str] = None
+    history: Optional[List[ConversationMessage]] = None  # ADD THIS LINE
 
 class ChatResponse(BaseModel):
     answer: str
-    citations: List[Citation]  # Uses defined Citation model
+    citations: List[Citation]
     latency: float
     conversation_id: Optional[str] = None
-    messages: List[ConversationMessage]  # Use explicit model instead of dict
+    messages: List[ConversationMessage]
 
 # Rebuild all models in dependency order
 Citation.model_rebuild()
