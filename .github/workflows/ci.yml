@@ -76,6 +76,7 @@ jobs:
           DATABASE_URL: sqlite+aiosqlite:///test.db
           JWT_SECRET: test-secret-key
           ENABLE_MONITORING: false
+          CI: true
 
   # Simplified E2E for now
   e2e:

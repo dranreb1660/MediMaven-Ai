@@ -329,13 +329,15 @@ async def lifespan(app: FastAPI):
         bot = MediMaven(backend_choice)
         
         # ── Optional monitoring ──
-        if config.ENABLE_MONITORING:
+        if config.ENABLE_MONITORING and not os.getenv('CI'):
             try:
                 wandb.init(project="Medimaven-rag-production", config={"backend": backend_choice.name})
                 weave.init("Medimaven-rag-production")
                 logger.info("✅ Monitoring initialized")
             except Exception as e:
                 logger.warning(f"Monitoring failed: {e}")
+        elif os.getenv('CI'):
+            logger.info("Skipping monitoring initialization in CI environment")
 
         logger.info(f"✅ MediMaven started with {backend_choice.name}")
         yield

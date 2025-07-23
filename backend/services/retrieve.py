@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np, pandas as pd, weave, logging
+import os
 from typing import List, Dict
 from backend.app import config
 from backend.services.vector_stores import QdrantStore, BM25Store
@@ -8,7 +9,16 @@ import asyncio
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
-weave.init("Medimaven-rag-production")
+
+# Only initialize weave if not in CI environment or if WANDB_API_KEY is available
+if not os.getenv('CI') or os.getenv('WANDB_API_KEY'):
+    try:
+        weave.init("Medimaven-rag-production")
+        logger.info("Weave initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize weave: {e}")
+else:
+    logger.info("Skipping weave initialization in CI environment")
 
 class Retriever():
     """Production-ready hybrid retriever with robust error handling"""
