@@ -14,7 +14,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts", "tailwind.config.js", "vitest.config.ts", "tests/unit/ChatBubble.test.tsx", "tests/setup.ts"]
+  "include": ["src", "vite.config.ts", "tailwind.config.js", "vitest.config.ts", "tests/**/*"]
 }

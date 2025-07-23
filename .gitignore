@@ -59,4 +59,5 @@ Thumbs.db
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?.tmp.driveupload/
+*.sw?
+.tmp.driveupload/

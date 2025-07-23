@@ -2,16 +2,8 @@ import '@testing-library/jest-dom'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
-// Add custom matchers types
-declare module 'vitest' {
-  interface Assertion<T = unknown> {
-    toBeInTheDocument(): T
-    toBeVisible(): T
-    toBeDisabled(): T
-    toHaveClass(className: string): T
-    toHaveTextContent(text: string | RegExp): T
-  }
-}
+// Add custom matchers types - jest-dom matchers are already included
+// The @testing-library/jest-dom import handles the type declarations
 
 // Cleanup after each test
 afterEach(() => {
