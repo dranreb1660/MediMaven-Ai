@@ -17,6 +17,7 @@ describe('MediMaven Chat', () => {
     cy.get('textarea[placeholder="Ask your health question..."]').should('be.visible')
     cy.get('textarea[placeholder="Ask your health question..."]').type('What are symptoms of diabetes?')
     cy.get('button[aria-label="Send message"]').click()
-    cy.contains('AI is thinking', { timeout: 10000 }).should('be.visible')
+    cy.contains('🤖 AI is thinking', { timeout: 10000 }).should('be.visible')
+    cy.contains('mock response', { timeout: 15000 }).should('be.visible')
   })
 })

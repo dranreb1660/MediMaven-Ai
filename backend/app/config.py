@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True, verbose=True)
 
 # Environment detection
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")

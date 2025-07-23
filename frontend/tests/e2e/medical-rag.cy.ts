@@ -19,7 +19,7 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.get('textarea[placeholder="Ask your health question..."]').should('be.visible')
     
     // Wait for response
-    cy.contains('AI is thinking', { timeout: 10000 }).should('be.visible')
+    cy.contains('🤖 AI is thinking', { timeout: 10000 }).should('be.visible')
     
     // Verify response (using mock response content)
     cy.contains(/mock response.*diabetes/i, { timeout: 30000 })

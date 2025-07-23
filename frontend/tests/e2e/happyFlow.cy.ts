@@ -10,7 +10,7 @@ describe('Happy path', () => {
     cy.get('button[aria-label="Send message"]').click()
     cy.contains('curable', {timeout:12_000}).should('be.visible')
 
-    cy.contains('Clear chat').click()
-    cy.contains('Medical AI Assistant', {timeout:2_000})
+    cy.get('button[title="Clear chat"]').click()
+    cy.contains('medical assistant', {timeout:2_000}).should('be.visible')
   })
 })
