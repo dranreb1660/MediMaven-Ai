@@ -34,8 +34,11 @@ async def chat(request: ChatRequest):
     return {
         "answer": f"This is a mock response for testing purposes. Your query was: {request.query}",
         "conversation_id": request.conversation_id or "test-conversation-id",
-        "citations": [{"id": "1", "title": "Mock Medical Document", "content": "Test citation"}],
-        "latency_s": 0.5
+        "citations": [{"id": "1", "source": "Mock Medical Document", "url": "http://example.com", "rank": 1}],
+        "latency": 0.5,
+        "messages": [
+            {"user": request.query, "assistant": f"This is a mock response for testing purposes. Your query was: {request.query}"}
+        ]
     }
 
 @app.post("/chat/stream")
@@ -61,8 +64,11 @@ async def chat_stream(request: ChatRequest):
             "done": True,
             "answer": response_text,
             "conversation_id": request.conversation_id or "test-conversation-id",
-            "citations": [{"id": "1", "title": "Mock Medical Document", "content": "Test citation"}],
-            "latency": 0.5
+            "citations": [{"id": "1", "source": "Mock Medical Document", "url": "http://example.com", "rank": 1}],
+            "latency": 0.5,
+            "messages": [
+                {"user": request.query, "assistant": response_text}
+            ]
         }) + "\n\n"
         yield f"data: {done_data}"
     
