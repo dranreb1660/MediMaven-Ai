@@ -214,27 +214,12 @@ jobs:
         working-directory: frontend
         run: npm ci
       
-      # Install minimal Python dependencies for mock backend
-      - name: Install mock backend dependencies
-        run: |
-          pip install fastapi uvicorn[standard] pydantic
-      
-      # Build frontend
+      # Build frontend (no backend URL needed since we're using Cypress mocks)
       - name: Build frontend
         working-directory: frontend
         run: npm run build
-        env:
-          VITE_API_URL: http://localhost:8000
       
-      # Start mock backend (lightweight, no GPU/LLM dependencies)
-      - name: Start mock backend
-        working-directory: frontend
-        run: |
-          python mock_backend.py &
-          echo $! > backend.pid
-          sleep 3
-      
-      # Start frontend preview server
+      # Start frontend preview server only
       - name: Start frontend server
         working-directory: frontend
         run: |
@@ -242,13 +227,9 @@ jobs:
           echo $! > frontend.pid
           sleep 3
       
-      # Wait for servers to be ready
-      - name: Wait for servers to be ready
+      # Wait for frontend to be ready
+      - name: Wait for frontend to be ready
         run: |
-          echo "Checking backend health..."
-          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do echo "Waiting for backend..."; sleep 2; done'
-          echo "✅ Backend is ready"
-          
           echo "Checking frontend..."
           timeout 30 bash -c 'until curl -f http://localhost:5173; do echo "Waiting for frontend..."; sleep 2; done'
           echo "✅ Frontend is ready"
