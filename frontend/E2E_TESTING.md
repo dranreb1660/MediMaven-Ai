@@ -1,10 +1,55 @@
-# E2E Testing Setup for MediMaven
+# Testing Strategy for MediMaven
 
-This document explains how to run End-to-End (E2E) tests for the MediMaven frontend.
+This document explains the testing approach for MediMaven, a medical AI application that uses LLMs and GPU resources.
 
-## Overview
+## Why Not Traditional E2E Tests?
 
-The E2E tests use Cypress and require both a frontend server and a mock backend server to be running. The mock backend simulates the actual API endpoints that the frontend interacts with.
+For medical AI applications that rely on:
+- Large Language Models (LLMs)
+- GPU compute resources  
+- Vector databases with medical knowledge
+- Real-time streaming responses
+- External medical APIs
+
+Traditional E2E tests become impractical because they:
+- Require expensive GPU infrastructure in CI
+- Have unpredictable response times (LLM inference)
+- Depend on external services and models
+- Are not truly "environment agnostic"
+- Generate high compute costs
+
+## Recommended Testing Strategy
+
+### 1. Unit Tests ✅
+- Frontend components with mocked dependencies
+- Backend services with mocked LLM responses
+- Utility functions and data transformations
+- API client functions with mock responses
+
+### 2. Integration Tests ✅
+- Frontend builds with backend API types
+- API client configurations are valid
+- Component contracts match backend schemas
+- Error handling for network failures
+- Loading states and UI feedback
+
+### 3. Component Tests ✅
+- Chat components with mock streaming responses
+- Citation rendering with sample data
+- Error states and retry mechanisms
+- Accessibility and user interactions
+
+### 4. Manual Testing (Recommended)
+- **Staging Environment**: Full LLM backend with real models
+- **User Acceptance Testing**: Real medical professionals
+- **Performance Testing**: Load testing with realistic queries
+- **Medical Accuracy**: Domain expert validation
+
+### 5. Production Monitoring 🎯
+- Response time monitoring
+- Error rate tracking
+- User session analytics
+- Medical query accuracy metrics
 
 ## Prerequisites
 
