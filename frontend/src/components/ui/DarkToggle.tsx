@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { ThemeCtx } from '../../context/ThemeContext';
+import { ThemeCtx } from '../../context/theme-constants';
 
 export default function DarkToggle() {
   const { dark, toggle } = useContext(ThemeCtx);

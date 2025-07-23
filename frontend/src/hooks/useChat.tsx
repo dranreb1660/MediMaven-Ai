@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useChatStore } from '../store/useChatStore';
 import { streamChat } from '../lib/streamChat';
 import type { ConversationMessage } from '../types/Types';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 

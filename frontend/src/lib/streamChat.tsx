@@ -2,7 +2,7 @@
 import { createParser } from 'eventsource-parser';
 
 export interface TokenChunk { type: 'token'; token: string }
-export interface DoneChunk  { type: 'done';  meta: any }
+export interface DoneChunk  { type: 'done';  meta: unknown }
 
 const DEFAULT_TIMEOUT = 180_000; // 3 minutes
 const MAX_RETRIES = 2;
@@ -38,8 +38,8 @@ export async function* streamChat(
       const decoder = new TextDecoder();
       const queue: (TokenChunk | DoneChunk)[] = [];
 
-      const parser = (createParser as any)({
-        onEvent(evt: any) {
+      const parser = (createParser as (config: { onEvent: (evt: { data?: string }) => void }) => { feed: (data: string) => void })({
+        onEvent(evt: { data?: string }) {
           if (!evt.data) return;
           const data = JSON.parse(evt.data);
           if (data.token) queue.push({ type: 'token', token: data.token });
@@ -60,15 +60,15 @@ export async function* streamChat(
       while (queue.length) yield queue.shift()!;
       return; // Success - exit retry loop
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timeoutId);
       lastError = err;
       
       // Don't retry on client errors or abort
-      if (err.name === 'AbortError') {
+      if (err instanceof Error && err.name === 'AbortError') {
         throw new Error('Stream timeout');
       }
-      if (err.message?.includes('SSE 4')) { // 4xx errors
+      if (err instanceof Error && err.message?.includes('SSE 4')) { // 4xx errors
         throw err;
       }
       

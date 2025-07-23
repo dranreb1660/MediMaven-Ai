@@ -9,7 +9,7 @@ import {
 } from '@heroicons/react/24/outline';
 import DarkToggle from './DarkToggle';
 import { useChatStore } from '../../store/useChatStore';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import MyHistoryControl from '../history/MyHistoryControl';
 
 type HeaderVariant = 'welcome' | 'chat';

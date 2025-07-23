@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { rehydrateChat } from '../lib/cache';
 import { useChatStore } from '../store/useChatStore';
 

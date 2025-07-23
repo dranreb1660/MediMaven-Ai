@@ -1,9 +1,8 @@
 // src/components/history/Sidebar.tsx
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useChatStore } from '../../store/useChatStore';
 import { fetchJson } from '../../lib/fetchJson';
-import type { Message } from '../../types/Types';
 
 const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 const AUDIENCE    = import.meta.env.VITE_AUTH0_AUDIENCE;
@@ -122,6 +121,15 @@ const loadChat = (it: ConvMeta) => {
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
         onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Close sidebar"
       />
 
       {/* panel */}
@@ -142,17 +150,19 @@ const loadChat = (it: ConvMeta) => {
           </button>
         </div>
 
-        <ul className="overflow-y-auto p-2 space-y-1 bg-gray-50 dark:bg-gray-800">
+        <div className="overflow-y-auto p-2 space-y-1 bg-gray-50 dark:bg-gray-800">
           {items.map((it) => (
-            <li
+            <button
               key={it.cid}
               onClick={() => loadChat(it)}
-              className="p-2 rounded cursor-pointer truncate
+              className="w-full p-2 rounded cursor-pointer truncate text-left
                          hover:bg-mm-blue-100 dark:hover:bg-mm-blue-900
-                         text-sm text-gray-900 dark:text-gray-200"
+                         text-sm text-gray-900 dark:text-gray-200
+                         focus:outline-none focus:ring-2 focus:ring-mm-accent-500"
+              aria-label={`Load chat: ${it.preview}`}
             >
               {it.preview}
-            </li>
+            </button>
           ))}
 
           {loading && (
@@ -166,7 +176,7 @@ const loadChat = (it: ConvMeta) => {
               You have no chat history.
             </p>
           )}
-        </ul>
+        </div>
       </aside>
     </div>
   );
