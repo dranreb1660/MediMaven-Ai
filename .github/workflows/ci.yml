@@ -78,7 +78,7 @@ jobs:
           ENABLE_MONITORING: false
           CI: true
 
-  # Simplified E2E for now
+  # E2E Tests with Cypress
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
@@ -87,8 +87,135 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
-      - name: E2E Tests
-        run: echo "E2E tests placeholder - implement when ready"
+      
+      # Setup Node.js for frontend
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      # Setup Python for mock backend
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      # Install frontend dependencies
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      # Build frontend
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      
+      # Create mock backend for CI testing
+      - name: Create mock backend server
+        run: |
+          cat > mock_backend.py << 'EOF'
+          from fastapi import FastAPI
+          from fastapi.middleware.cors import CORSMiddleware
+          from pydantic import BaseModel
+          from typing import List, Dict, Any
+          import uvicorn
+          import asyncio
+          import json
+          
+          app = FastAPI()
+          
+          app.add_middleware(
+              CORSMiddleware,
+              allow_origins=["*"],
+              allow_credentials=True,
+              allow_methods=["*"],
+              allow_headers=["*"],
+          )
+          
+          class ChatRequest(BaseModel):
+              query: str
+              conversation_id: str = None
+              history: List[Dict[str, Any]] = []
+          
+          @app.get("/health")
+          def health():
+              return {"status": "ok", "bot_initialized": True}
+          
+          @app.post("/chat")
+          async def chat(request: ChatRequest):
+              # Mock response for E2E testing
+              await asyncio.sleep(0.5)  # Simulate processing time
+              return {
+                  "answer": f"This is a mock response for testing purposes. Your query was: {request.query}",
+                  "conversation_id": request.conversation_id or "test-conversation-id",
+                  "citations": [
+                      {"id": "1", "title": "Mock Medical Document", "content": "Test citation"}
+                  ],
+                  "latency_s": 0.5
+              }
+          
+          if __name__ == "__main__":
+              uvicorn.run(app, host="0.0.0.0", port=8000)
+          EOF
+      
+      # Install FastAPI for mock server
+      - name: Install mock server dependencies
+        run: pip install fastapi uvicorn
+      
+      # Start mock backend server
+      - name: Start mock backend server
+        run: |
+          python mock_backend.py &
+          echo $! > backend.pid
+          sleep 5
+      
+      # Start frontend server
+      - name: Start frontend server
+        working-directory: frontend
+        run: |
+          npm run preview -- --host 0.0.0.0 --port 5173 &
+          echo $! > frontend.pid
+          sleep 5
+      
+      # Wait for servers to be ready
+      - name: Wait for servers to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do echo "Waiting for backend..."; sleep 2; done'
+          timeout 30 bash -c 'until curl -f http://localhost:5173; do echo "Waiting for frontend..."; sleep 2; done'
+      
+      # Run Cypress E2E tests
+      - name: Run Cypress E2E tests
+        working-directory: frontend
+        run: npm run cypress:run
+        env:
+          CYPRESS_baseUrl: http://localhost:5173
+          CYPRESS_apiUrl: http://localhost:8000
+      
+      # Upload Cypress artifacts on failure
+      - name: Upload Cypress screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          retention-days: 7
+      
+      - name: Upload Cypress videos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-videos
+          path: frontend/cypress/videos
+          retention-days: 7
+      
+      # Cleanup: Stop servers
+      - name: Stop servers
+        if: always()
+        run: |
+          if [ -f backend.pid ]; then kill $(cat backend.pid) 2>/dev/null || true; fi
+          if [ -f frontend/frontend.pid ]; then kill $(cat frontend/frontend.pid) 2>/dev/null || true; fi
 
   # Comment out Docker and Deploy for now
   # docker:
