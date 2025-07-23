@@ -94,6 +94,7 @@ export default function ChatBox({ sendMessage: initialMessage }: Props) {
                 onClick={handleSend}
                 disabled={!input.trim() || isTyping || !online}
                 className="px-6 py-3 w-3/5 mx-auto xs:w-auto xs:mx-0 xs:min-w-[100px]"
+                aria-label="Send message"
               >
                 {isTyping ? '⏳' : '📤'}
               </Button>

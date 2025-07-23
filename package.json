@@ -1,0 +1,15 @@
+{
+  "name": "medimaven",
+  "version": "1.0.0",
+  "description": "Medical AI RAG Assistant",
+  "scripts": {
+    "test": "bash test.sh",
+    "test:frontend": "cd frontend && npm test",
+    "test:backend": "cd backend && pytest",
+    "test:e2e": "bash test.sh --e2e",
+    "test:coverage": "bash test.sh --coverage",
+    "test:watch": "bash test.sh --watch"
+  },
+  "keywords": ["medical", "ai", "rag", "healthcare"],
+  "license": "MIT"
+}

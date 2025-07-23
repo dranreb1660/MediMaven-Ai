@@ -16,5 +16,5 @@
     "jsx": "react-jsx",
     "skipLibCheck": true
   },
-  "include": ["src", "vite.config.ts", "tailwind.config.js"]
+  "include": ["src", "vite.config.ts", "tailwind.config.js", "vitest.config.ts", "tests/unit/ChatBubble.test.tsx", "tests/setup.ts"]
 }
