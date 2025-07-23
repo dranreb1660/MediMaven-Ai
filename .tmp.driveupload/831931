@@ -1,8 +1,0 @@
-WARNING:py.warnings:/usr/local/lib/python3.11/dist-packages/weave/trace/settings.py:184: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
-  for name in self.model_fields:
-
-2025-07-23 06:40:56,280 - backend.app.main - INFO - ✅ Monitoring initialized
-INFO:backend.app.main:✅ Monitoring initialized
-2025-07-23 06:40:56,281 - backend.app.main - INFO - ✅ MediMaven started with VLLM
-INFO:backend.app.main:✅ MediMaven started with VLLM
-[32mINFO[0m:     Application startup complete.
