@@ -9,8 +9,8 @@ vi.mock('../../src/lib/streamChat', () => ({
   streamChat: vi.fn()
 }))
 
-// Mock the auth context
-vi.mock('../../src/context/AuthContext', () => ({
+// Mock the auth hook
+vi.mock('../../src/hooks/useAuth', () => ({
   useAuth: () => ({
     isAuthenticated: false,
     getAccessToken: vi.fn().mockResolvedValue(undefined)
@@ -82,7 +82,8 @@ describe('Chat Page', () => {
       yield { type: 'done', meta: {
         answer: 'Based on current medical guidelines, migraines can have various causes...',
         citations: [],
-        conversation_id: 'test-123'
+        conversation_id: 'test-123',
+        latency: 1.5
       }}
     })
     
@@ -137,7 +138,8 @@ describe('Chat Page', () => {
       yield { type: 'done', meta: {
         answer: 'Common symptoms include headache, nausea, and sensitivity to light.',
         citations: [],
-        conversation_id: 'test-456'
+        conversation_id: 'test-456',
+        latency: 0.8
       }}
     })
     

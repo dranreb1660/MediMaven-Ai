@@ -2,7 +2,20 @@
 import { createParser } from 'eventsource-parser';
 
 export interface TokenChunk { type: 'token'; token: string }
-export interface DoneChunk  { type: 'done';  meta: unknown }
+
+interface StreamMeta {
+  answer: string;
+  conversation_id: string;
+  citations?: Array<{
+    id: string;
+    source: string;
+    url?: string;
+    rank: number;
+  }>;
+  latency: number;
+}
+
+export interface DoneChunk  { type: 'done';  meta: StreamMeta }
 
 const DEFAULT_TIMEOUT = 180_000; // 3 minutes
 const MAX_RETRIES = 2;
@@ -62,7 +75,7 @@ export async function* streamChat(
       
     } catch (err: unknown) {
       clearTimeout(timeoutId);
-      lastError = err;
+      lastError = err instanceof Error ? err : new Error(String(err));
       
       // Don't retry on client errors or abort
       if (err instanceof Error && err.name === 'AbortError') {
