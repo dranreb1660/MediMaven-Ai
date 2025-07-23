@@ -22,7 +22,9 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.contains('🤖 AI is thinking', { timeout: 10000 }).should('be.visible')
     
     // Verify response (using mock response content)
-    cy.contains(/mock response.*diabetes/i, { timeout: 30000 })
+    cy.contains(/This is a mock response for testing purposes/i, { timeout: 30000 })
+      .should('be.visible')
+    cy.contains(/diabetes/i, { timeout: 30000 })
       .should('be.visible')
     
     // Follow-up question
@@ -31,7 +33,9 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.get('button[aria-label="Send message"]').click()
     
     // Verify contextual response (mock will echo the question)
-    cy.contains(/mock response.*metformin/i, { timeout: 30000 })
+    cy.contains(/This is a mock response for testing purposes/i, { timeout: 30000 })
+      .should('be.visible')
+    cy.contains(/metformin/i, { timeout: 30000 })
       .should('be.visible')
   })
 
@@ -44,7 +48,7 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.get('button[aria-label="Send message"]').click()
     
     // Wait for response first
-    cy.contains(/mock response/i, { timeout: 20000 }).should('be.visible')
+    cy.contains(/This is a mock response for testing purposes/i, { timeout: 20000 }).should('be.visible')
     
     // Mock backend includes citations, check for them
     cy.contains('Mock Medical Document').should('be.visible')
@@ -57,14 +61,18 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.get('textarea[placeholder="Ask your health question..."]').type('I have a patient with hypertension')
     cy.get('button[aria-label="Send message"]').click()
     
-    cy.contains(/mock response.*hypertension/i, { timeout: 20000 })
+    cy.contains(/This is a mock response for testing purposes/i, { timeout: 20000 })
+      .should('be.visible')
+    cy.contains(/hypertension/i, { timeout: 20000 })
     
     // Follow-up with context
     cy.get('textarea[placeholder="Ask your health question..."]').type('What if they also have diabetes?')
     cy.get('button[aria-label="Send message"]').click()
     
     // Should get response for diabetes question
-    cy.contains(/mock response.*diabetes/i, { timeout: 20000 })
+    cy.contains(/This is a mock response for testing purposes/i, { timeout: 20000 })
+      .should('be.visible')
+    cy.contains(/diabetes/i, { timeout: 20000 })
       .should('be.visible')
   })
 

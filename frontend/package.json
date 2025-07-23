@@ -14,7 +14,9 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "cypress:open": "cypress open",
-    "cypress:run": "cypress run"
+    "cypress:run": "cypress run",
+    "e2e:servers": "./start-e2e-servers.sh",
+    "e2e:test": "./start-e2e-servers.sh && sleep 10 && npm run cypress:run"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.3.0",
