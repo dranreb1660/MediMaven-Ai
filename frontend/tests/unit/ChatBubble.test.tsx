@@ -72,7 +72,7 @@ describe('Chat Page', () => {
 
   it('sends message and displays response', async () => {
     const { streamChat } = await import('../../src/lib/streamChat')
-    const mockStreamChat = streamChat as vi.MockedFunction<typeof streamChat>
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
     
     // Mock the streaming response
     mockStreamChat.mockImplementation(async function* () {
@@ -126,7 +126,7 @@ describe('Chat Page', () => {
 
   it('handles streaming responses', async () => {
     const { streamChat } = await import('../../src/lib/streamChat')
-    const mockStreamChat = streamChat as vi.MockedFunction<typeof streamChat>
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
     
     // Mock streaming with multiple token chunks
     mockStreamChat.mockImplementation(async function* () {

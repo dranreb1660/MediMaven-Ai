@@ -1,5 +1,5 @@
 import { screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
 import axios from 'axios'
 import Chat from '../../src/pages/Chat'
 import { renderWithProviders } from '../utils'
@@ -48,7 +48,14 @@ vi.mock('../../src/store/useChatStore', () => ({
 }))
 
 vi.mock('axios')
-const mockedAxios = axios as jest.Mocked<typeof axios>
+const mockedAxios = {
+  post: vi.fn(),
+  get: vi.fn(),
+} as {
+  post: MockedFunction<typeof axios.post>
+  get: MockedFunction<typeof axios.get>
+}
+Object.assign(axios, mockedAxios)
 
 describe('Chat Page', () => {
   beforeEach(() => {
@@ -65,7 +72,7 @@ describe('Chat Page', () => {
 
   it('sends message and displays response', async () => {
     const { streamChat } = await import('../../src/lib/streamChat')
-    const mockStreamChat = streamChat as vi.MockedFunction<typeof streamChat>
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
     
     // Mock the streaming response
     mockStreamChat.mockImplementation(async function* () {
@@ -119,7 +126,7 @@ describe('Chat Page', () => {
 
   it('handles streaming responses', async () => {
     const { streamChat } = await import('../../src/lib/streamChat')
-    const mockStreamChat = streamChat as vi.MockedFunction<typeof streamChat>
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
     
     // Mock streaming with multiple token chunks
     mockStreamChat.mockImplementation(async function* () {
