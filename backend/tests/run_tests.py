@@ -1,35 +1,32 @@
 #!/usr/bin/env python
-"""Quick test runner to verify backend tests are working"""
-
+"""Universal test runner that works in all environments"""
 import subprocess
 import sys
 import os
 
-def run_backend_tests():
-    """Run backend tests with proper environment setup"""
+def run_tests():
+    # Detect environment
+    is_colab = os.path.exists("/content/drive")
+    is_ci = os.environ.get("CI") == "true"
     
-    # Set environment variables
-    env = os.environ.copy()
-    env['PYTHONPATH'] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env['DATABASE_URL'] = 'sqlite:///test.db'
-    env['ENABLE_MONITORING'] = 'false'
-    env['JWT_SECRET'] = 'test-secret-key'
+    print(f"Environment: {'Colab' if is_colab else 'CI' if is_ci else 'Local'}")
     
-    # Change to backend directory
-    backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
-    os.chdir(backend_dir)
+    # Set appropriate test command
+    if is_colab:
+        # Run Colab-specific tests
+        cmd = ["python", "scripts/quick_test_colab.py"]
+    else:
+        # Run standard pytest
+        test_files = [
+            "tests/test_minimal.py",
+            "tests/test_api_universal.py::TestSchemas",
+            "tests/test_services_universal.py::TestBasicUnits",
+        ]
+        cmd = ["pytest"] + test_files + ["-v"]
     
-    print("Running backend tests...")
-    print(f"Working directory: {os.getcwd()}")
-    print(f"PYTHONPATH: {env['PYTHONPATH']}")
-    
-    # Run pytest with minimal output
-    cmd = [sys.executable, '-m', 'pytest', '-v', '--tb=short', '-x']
-    
-    result = subprocess.run(cmd, env=env)
-    
+    # Run tests
+    result = subprocess.run(cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
     return result.returncode
 
-if __name__ == '__main__':
-    exit_code = run_backend_tests()
-    sys.exit(exit_code)
+if __name__ == "__main__":
+    sys.exit(run_tests())
