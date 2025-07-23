@@ -1,0 +1,62 @@
+venv/
+__pycache__/
+.ipynb_checkpoints
+*.pyc
+*.pkl
+*.log
+.DS_Store
+models/
+embeddings/
+data/
+*.csv
+data/raw
+data/*
+wandb/
+.env
+*.db
+.zen
+.gdrive_cred.json
+*.ipynb
+cloudflared
+
+./mount_gdrive.sh
+/setup_colab.sh
+./cloudflared
+
+/medimaven-qa-data
+Resume_Docs
+notebooks/v1.1/08_rag_inference.ipynb
+.dockerignore
+*.tsv
+
+
+# Ignore frontend build artifacts
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?.tmp.driveupload/
