@@ -46,11 +46,11 @@ export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
   };
 
   return (
-    <ul className="px-4 py-2 overflow-y-auto space-y-1 flex-1">
+    <ul className="px-4 py-2 overflow-y-auto space-y-1 flex-1 ">
       {items.map(it=>(
         <li key={it.cid}
             onClick={()=>loadChat(it)}
-            className="p-2 rounded cursor-pointer truncate hover:bg-mm-blue-100 dark:hover:bg-mm-blue-900 text-sm">
+            className="p-2 rounded cursor-pointer truncate hover:bg-mm-blue-100 dark:hover:bg-mm-blue-700 text-sm">
           {it.preview}
         </li>
       ))}

@@ -29,10 +29,10 @@ export default function AppDrawer() {
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 260, damping: 25 }}
             className="fixed right-0 top-0 h-full w-72 sm:w-80
-                       bg-gray-900 text-gray-100 z-50 flex flex-col"
+                       bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-400 z-50 flex flex-col"
           >
             {/* header */}
-            <div className="flex items-center justify-between px-4 py-3 border-mm-accent border-b">
+            <div className="flex items-center justify-between px-4 py-3 border-mm-accent-300 border-b">
               <h3 className="text-lg font-semibold">Quick&nbsp;Menu</h3>
               <button onClick={close}>
                 <X size={22} />
@@ -45,10 +45,9 @@ export default function AppDrawer() {
             </div>
 
             {/* footer controls */}
-            <div className="border-t border-gray-700 p-4 space-y-4">
+            <div className="border-t border-mm-accent p-4 space-y-4">
               {/* Dark-mode row */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm hidden sm:inline">Dark&nbsp;mode</span>
+              <div className="flex items-center justify-end">
                 <DarkToggle />
               </div>
 
