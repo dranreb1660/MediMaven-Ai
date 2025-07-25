@@ -4,12 +4,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { useChatStore } from '../../store/useChatStore';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { fetchJson } from '../../lib/fetchJson';
+import type { Citation } from '../../types/Types';
 
 const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 const AUDIENCE    = import.meta.env.VITE_AUTH0_AUDIENCE;
 const STORAGE_KEY = 'medimaven.chatHistory';
 
-interface ConvMeta { cid:string; preview:string; messages:Array<{user?: string; assistant?: string; citations?: unknown; latency?: number}> }
+interface ConvMeta { cid:string; preview:string; messages:Array<{user?: string; assistant?: string; citations?: Citation[]; latency?: number}> }
 
 export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
   const { isAuthenticated, getAccessToken } = useAuth();
