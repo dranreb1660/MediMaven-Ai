@@ -50,7 +50,7 @@ export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
       {items.map(it=>(
         <li key={it.cid}
             onClick={()=>loadChat(it)}
-            className="p-2 rounded cursor-pointer truncate hover:bg-mm-blue-100 dark:hover:bg-mm-blue-700 text-sm">
+            className="p-2 rounded cursor-pointer truncate text-gray-700 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 text-sm">
           {it.preview}
         </li>
       ))}

@@ -3,25 +3,31 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { useChatStore } from '../store/useChatStore';
 
 export const useAuth = () => {
-  const { isAuthenticated, isLoading,
-          loginWithRedirect, logout: rawLogout,
-          getAccessTokenSilently, user } = useAuth0();
+  const {
+    isAuthenticated, isLoading, user,
+    loginWithRedirect,
+    logout: auth0Logout,
+    getAccessTokenSilently,
+  } = useAuth0();
 
-  const login = () => {
-    // ← simply call the provider's configured redirect/audience
-    return loginWithRedirect();
-  };
-
-  const logout = () => {
-    rawLogout({
+  /** Hard logout without nuking Google account */
+  const logout = () =>
+    auth0Logout({
       logoutParams: {
-        federated: true,
-        // next return to /chat
-        returnTo: window.location.origin + '/chat',
+        returnTo: window.location.origin,   // ← where to land
+        // ❌ NO “federated: true” ⇒ leaves Google session intact
       },
     });
-    useChatStore.getState().reset();
-  };
+
+  /** Always show the Auth0 UI */
+  const login = () =>
+    loginWithRedirect({
+      authorizationParams: {
+        audience:   import.meta.env.VITE_AUTH0_AUDIENCE,
+        prompt:     'login',          // or 'select_account'
+        // max_age: 0,                // alternative to prompt
+      },
+    });
 
   return {
     isAuthenticated,

@@ -4,6 +4,7 @@ import MessageList from './MessageList';
 import SiteHeader from '../ui/SiteHeader';
 import Button from '../ui/Button';
 import Container from '../layout/Container';
+import Disclaimer from '../ui/Disclaimer';
 
 type Props = { sendMessage?: string };
 
@@ -63,21 +64,24 @@ export default function ChatBox({ sendMessage: initialMessage }: Props) {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <MessageList messages={messages} isTyping={isTyping} retry={retryLast} />
-            {error && (
-              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-red-700 dark:text-red-300 text-sm">⚠️ {error}</p>
-                <Button variant="outline" size="sm" onClick={retryLast} className="mt-2">
-                  Try Again
-                </Button>
-              </div>
-            )}
-            <div ref={bottomRef} />
+          <div className="flex-1 flex flex-col overflow-y-auto">
+            <div className="flex-1 px-4 pb-4 overflow-y-auto">
+              <MessageList messages={messages} isTyping={isTyping} retry={retryLast} />
+              {error && (
+                <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-red-700 dark:text-red-300 text-sm">⚠️ {error}</p>
+                  <Button variant="outline" size="sm" onClick={retryLast} className="mt-2">
+                    Try Again
+                  </Button>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+            {messages.length === 0 && <Disclaimer />}
           </div>
 
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex flex-col xs:flex-row xs:items-end gap-3">
+          <div className="border-t border-gray-200 dark:border-gray-700 p-4 pb-safe">
+            <div className="flex gap-3 items-end">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -87,20 +91,26 @@ export default function ChatBox({ sendMessage: initialMessage }: Props) {
                 disabled={isTyping || !online}
                 maxLength={1000}
                 rows={1}
-                className="flex-1 max-h-32 resize-none border-2 border-gray-300 dark:border-gray-600 rounded-2xl px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-mm-accent disabled:opacity-50"
-                style={{ minHeight: '48px' }}
+                className="flex-1 max-h-32 resize-none border-2 border-gray-300 dark:border-gray-600 rounded-full px-5 py-3.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-base focus:outline-none focus:ring-2 focus:ring-mm-accent focus:border-transparent disabled:opacity-50 transition-all duration-200"
+                style={{ minHeight: '52px' }}
               />
               <Button
                 onClick={handleSend}
                 disabled={!input.trim() || isTyping || !online}
-                className="px-6 py-3 w-3/5 mx-auto xs:w-auto xs:mx-0 xs:min-w-[100px]"
+                className="h-[52px] w-[52px] rounded-full p-0 flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow"
                 aria-label="Send message"
               >
-                {isTyping ? '⏳' : '📤'}
+                {isTyping ? (
+                  <div className="animate-pulse">⏳</div>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                )}
               </Button>
             </div>
             {(isTyping || !online) && (
-              <p className="text-center text-xs text-gray-500 mt-2">
+              <p className="text-center text-xs text-gray-500 mt-2 animate-fade-in">
                 {isTyping ? '🤖 AI is thinking…' : '🔴 Check your connection'}
               </p>
             )}
