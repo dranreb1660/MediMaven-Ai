@@ -80,64 +80,29 @@ def chunk_text_by_tokens(text: str, tokenizer, max_tokens=512, overlap=256):
     return chunks  
 
 
-# # -------------- MongoDB Batch Operations -------------- #
-
-# def insert_documents_in_batches(collection, documents, batch_size=1000):
-#     """
-#     Insert documents into MongoDB in batches to prevent timeouts with large datasets.
-    
-#     Args:
-#         collection: MongoDB collection to insert into
-#         documents: List of documents to insert
-#         batch_size: Number of documents per batch (default: 1000)
-    
-#     Returns:
-#         total_inserted: Total number of documents inserted
-#     """
-#     total_docs = len(documents)
-#     total_inserted = 0
-    
-#     print(f"Inserting {total_docs} documents in batches of {batch_size}...")
-    
-#     for i in range(0, total_docs, batch_size):
-#         end_idx = min(i + batch_size, total_docs)
-#         batch = documents[i:end_idx]
-#         if batch:
-#             collection.insert_many(batch)
-#             total_inserted += len(batch)
-#             print(f"Inserted batch {i//batch_size + 1}: {len(batch)} documents ({total_inserted}/{total_docs})")
-    
-#     print(f"✅ Successfully inserted {total_inserted} documents in {(total_docs + batch_size - 1) // batch_size} batches")
-#     return total_inserted
 
 
 import torch
 
 def get_device():
-    """
-    Get the most suitable device for PyTorch operations with proper error handling.
-    Returns: torch.device
-    """
+    """Get best available device for PyTorch operations"""
     try:
-        # Stage 1: Check for CUDA (NVIDIA GPU)
         if torch.cuda.is_available():
             device = 'cuda'
-            print(f"Using CUDA (NVIDIA GPU): {torch.cuda.get_device_name(0)}")
+            print(f"Using CUDA: {torch.cuda.get_device_name(0)}")
             return device
         
-        # Stage 2: Check for Apple Silicon GPU (MPS)
         if torch.backends.mps.is_available(): 
             device = "mps"
-            print("Using Apple Silicon GPU (MPS)")
+            print("Using Apple Silicon GPU")
             return device
         
-        # Stage 3: Fall back to CPU
         device = 'cpu'
         print("Using CPU")
         return device
         
     except Exception as e:
-        print(f"Error detecting device, falling back to CPU: {str(e)}")
+        print(f"Device detection failed, using CPU: {str(e)}")
         return torch.device("cpu")
 
 def clean_response(text: str) -> str:
@@ -154,21 +119,14 @@ def file_sha(path: Path) -> str:
     return hashlib.md5(open(path, "rb").read()).hexdigest()
 
 class Timer:
-    """A simple timer class to measure elapsed time.
-    # Usage:
-            t = Timer()  # Explicit timer start
-            action1()
-            print(f"Action1: {t.elapsed():.3f}s")
-            action2()
-            print(f"Total: {t.elapsed():.3f}s")
-    """
-    __slots__ = ('_start',)  # Prevents dynamic attribute creation
+    """Simple timer for measuring elapsed time"""
+    __slots__ = ('_start',)
     
     def __init__(self):
-        self._start = time.perf_counter()  # Best for intervals
+        self._start = time.perf_counter()
     
     def elapsed(self):
-        """Returns current elapsed seconds (float)"""
+        """Get elapsed seconds"""
         return time.perf_counter() - self._start
 
 def best_device():

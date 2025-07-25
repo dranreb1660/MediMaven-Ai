@@ -18,7 +18,6 @@ from src.backend.utils import get_mongo_connection, cosine_similarity, l2_distan
 from zenml import step, pipeline
 import requests
 
-# Initialize monitoring tools
 weave.init("medical-rag-production")
 
 class MedicalRAGSystem:
@@ -85,8 +84,8 @@ class MedicalRAGSystem:
             context = "\n\n".join(d["context"] for d in context_docs[:3])
 
             sys_msg = (
-                "You are a helpful medical AI assistant. Provide clear and concise answers based on the given question with the help of given context. "
-                "The answer is after the [/INST] tag so generate and summarize everything after the [/INST] tag."
+                "You are a medical assistant. Provide clear answers based on the context. "
+                "Generate your response after the [/INST] tag."
             )
 
             prompt = f"[INST] <<SYS>>\n{sys_msg}\n<<SYS>>\nQuestion: {query}\nContext: {context}\n[/INST]"
@@ -166,11 +165,9 @@ class MedicalRAGSystem:
             self.cleanup_memory()
             return "I encountered an error processing your medical query. Please try again later."
 
-# --- ZenML Integration ---
 @step
 def load_rag_system() -> MedicalRAGSystem:
-    """Load the RAG system (ZenML will cache this)."""
-    # Initialize system with memory optimization flags
+    """Load the RAG system with caching"""
     rag = MedicalRAGSystem()
     return rag
 
@@ -181,6 +178,6 @@ def execute_query(rag: MedicalRAGSystem, query: str) -> str:
 
 @pipeline(enable_cache=True)
 def rag_inference_pipeline(query: str):
-    """Production RAG pipeline with monitoring."""
+    """Main RAG inference pipeline"""
     rag = load_rag_system()
     return execute_query(rag, query)

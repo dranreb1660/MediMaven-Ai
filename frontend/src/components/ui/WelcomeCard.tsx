@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button';
-import doctorIllustration from '../../assets/ai_doc2.png';
+import doctorIllustration from '../../assets/medimaven-logo-new-comp.png';
 import { useChatStore } from '../../store/useChatStore';
 
 export default function WelcomeCard() {

@@ -351,7 +351,7 @@ def parse_prompt_and_answer(text: str) -> (str, str):
     marker = "[/INST]"
     idx = text.find(marker)
     if idx == -1:
-        # If there's no [/INST], treat the entire text as prompt (edge case).
+        # No [/INST] marker found - edge case handling
         return text, ""
     prompt_str = text[: idx + len(marker)]
     answer_str = text[idx + len(marker) :]
@@ -388,13 +388,13 @@ def evaluate_in_batches(
     # Iterate in mini-batches
     for start_idx in tqdm(range(0, len(dataset), batch_size), desc="Evaluating"):
         end_idx = start_idx + batch_size
-        # NOTE: Slicing a HF Dataset returns a dict of columns, each a list
+        # HF Dataset slicing gives us a dict of lists
         batch_slice = dataset[start_idx:end_idx]
 
         # Extract the 'input_ids' list (size: <= batch_size)
         input_ids_batch = batch_slice["input_ids"]
 
-        # --- 1) For each sample, decode, split into prompt vs. answer. ---
+        # Step 1: Decode and split prompt from answer
         prompts, answers = [], []
         for ids in input_ids_batch:
             full_text = tokenizer.decode(ids, skip_special_tokens=False)
@@ -403,7 +403,7 @@ def evaluate_in_batches(
             prompts.append(prompt_str)
             answers.append(answer_str)
 
-        # --- 2) Generate from prompt-only ---
+        # Step 2: Generate responses from prompts only
         prompt_enc = tokenizer(
             prompts,
             return_tensors="pt",
@@ -429,7 +429,7 @@ def evaluate_in_batches(
             for g in predictions
         ]
 
-        # --- 3) Compute answer-only perplexity by masking prompt tokens ---
+        # Step 3: Calculate perplexity on answer tokens only
         # Re-tokenize full text: prompt + answer
         full_enc = tokenizer(
             [p + " " + a for p, a in zip(prompts, answers)],
@@ -468,8 +468,7 @@ def evaluate_in_batches(
         total_loss += batch_loss * num_in_batch
         total_samples += num_in_batch
 
-        # --- 4) Log a few examples for debugging ---
-        # We'll log 2 examples each batch or so
+        # Step 4: Log some examples for debugging
         if len(logs) < 2 * ((start_idx // batch_size) + 1):
             for i_log in range(min(2, num_in_batch)):
                 logs.append({
@@ -484,7 +483,7 @@ def evaluate_in_batches(
         torch.cuda.empty_cache()
 
 
-    # --- 5) Final perplexity across dataset (answer tokens only) ---
+        # Step 5: Calculate final perplexity
     avg_loss = total_loss / total_samples if total_samples > 0 else float("inf")
     ppl = math.exp(avg_loss) if avg_loss < 100 else float("inf")
 

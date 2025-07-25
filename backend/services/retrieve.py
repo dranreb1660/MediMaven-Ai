@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-# Only initialize weave if not in CI environment or if WANDB_API_KEY is available
+# Skip weave in CI unless we have the API key
 if not os.getenv('CI') or os.getenv('WANDB_API_KEY'):
     try:
         weave.init("Medimaven-rag-production")
@@ -28,10 +28,10 @@ class Retriever():
         self._initialized = False
 
         try:
-            # Load and validate data
+            # Load metadata and embeddings
             self._load_data()
             
-            # Initialize stores with error handling
+            # Set up BM25 and Qdrant stores with error handling
             self._init_stores(qdrant_force_rebuild, bm_force_rebuild, use_cloud)
             
             self._initialized = True
@@ -43,9 +43,9 @@ class Retriever():
             raise RuntimeError(f"Failed to initialize retriever: {e}")
     
     def _load_data(self):
-        """Load and validate core data"""
+        """Load chunk metadata and embeddings from disk"""
         try:
-            # Load metadata
+            # Load chunk metadata
             if not config.META_PQT.exists():
                 raise FileNotFoundError(f"Metadata file not found: {config.META_PQT}")
             
@@ -61,11 +61,11 @@ class Retriever():
             if self.vecs.size == 0:
                 raise ValueError("Embeddings file is empty")
             
-            # Validate alignment
+            # Make sure metadata and embeddings match up
             if len(self.chunks) != len(self.vecs):
                 raise ValueError(f"Metadata ({len(self.chunks)}) and embeddings ({len(self.vecs)}) count mismatch")
             
-            # Initialize embedding model
+            # Set up embedding model
             self.embed_model = self._build_embed(config.EMBED_NAME)
             
             logger.info(f"📚 Loaded {len(self.chunks)} chunks with {self.vecs.shape[1]}D embeddings")
@@ -75,16 +75,16 @@ class Retriever():
             raise
     
     def _init_stores(self, qdrant_force_rebuild: bool, bm_force_rebuild: bool, use_cloud: bool):
-        """Initialize BM25 and Qdrant stores with validation"""
+        """Set up BM25 and Qdrant search stores"""
         try:
-            # Initialize BM25 store
+            # Set up BM25 sparse search
             self.bm25_store = BM25Store(
                 pkl_path=config.BM25_PKL,
                 chunks_df=self.chunks,
                 force_rebuild=bm_force_rebuild
             )
             
-            # Initialize Qdrant store
+            # Set up Qdrant dense search
             self.qdrant_store = QdrantStore(
                 collection_name=config.QCOLL,
                 embed_model_name=config.EMBED_NAME,
@@ -97,7 +97,7 @@ class Retriever():
                 force_rebuild=qdrant_force_rebuild
             )
             
-            # Validate stores
+            # Check that Qdrant is working
             qdrant_info = self.qdrant_store.get_collection_info()
             if not qdrant_info:
                 raise RuntimeError("Qdrant store validation failed")
@@ -110,7 +110,7 @@ class Retriever():
     
     @staticmethod
     def _build_embed(model_name: str):
-        """Initialize embedding model with device detection"""
+        """Load embedding model on best available device"""
         try:
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -170,7 +170,7 @@ class Retriever():
                 fused[item_id][f"{channel}_rank"] = rank
                 scores[item_id] = scores.get(item_id, 0) + weight / (k_rrf + rank)
             
-            # Process results
+            # Add dense and sparse results to fusion
             for rank, item in enumerate(dense):
                 _add_result(item, "dense", rank, w_dense)
             
@@ -188,11 +188,11 @@ class Retriever():
             
         except Exception as e:
             logger.error(f"Fusion failed: {e}")
-            # Return best available results
+            # Fallback to whatever we have
             return (dense or sparse)[:k]
     
     def retrieve(self, query: str, mode: str = "fuse") -> List[Dict]:
-        """Synchronous retrieval with mode selection"""
+        """Main retrieval method - supports dense, sparse, or fused search"""
         if not self._initialized:
             return []
         
