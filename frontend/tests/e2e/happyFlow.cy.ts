@@ -41,7 +41,7 @@ describe('Happy path', () => {
     cy.get('button[aria-label="Send message"]').click()
     cy.contains(/curable|Mock response/i, {timeout:12_000}).should('be.visible')
 
-    cy.get('button[title="Clear chat"]').click()
+    cy.get('button[title="New chat"]').click()
     cy.contains('medical assistant', {timeout:2_000}).should('be.visible')
   })
 })
