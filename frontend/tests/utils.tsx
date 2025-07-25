@@ -1,6 +1,7 @@
 import { render, RenderOptions } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { ReactElement } from 'react'
+import { DrawerProvider } from '../src/context/DrawerContext'
 
 // Test data factories
 export const createMockMessage = (overrides = {}) => ({
@@ -31,7 +32,11 @@ export const renderWithProviders = (
 ) => {
   return render(ui, {
     wrapper: ({ children }) => (
-      <BrowserRouter>{children}</BrowserRouter>
+      <BrowserRouter>
+        <DrawerProvider>
+          {children}
+        </DrawerProvider>
+      </BrowserRouter>
     ),
     ...options,
   })
