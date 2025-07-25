@@ -1,6 +1,5 @@
 // src/hooks/useAuth.ts
 import { useAuth0 } from '@auth0/auth0-react';
-import { useChatStore } from '../store/useChatStore';
 
 export const useAuth = () => {
   const {

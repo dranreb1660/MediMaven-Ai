@@ -1,7 +1,6 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, MessageSquare, MessageCirclePlus, Trash2, Menu} from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Home, MessageSquare, MessageCirclePlus, Menu} from 'lucide-react';
 import { useDrawer } from '../../context/DrawerContext';
-import DarkToggle from './DarkToggle';
 
 type HeaderVariant = 'welcome' | 'chat';
 interface HeaderProps {
@@ -11,27 +10,12 @@ interface HeaderProps {
 
 export default function SiteHeader({ variant, onClear }: HeaderProps) {
   const { pathname } = useLocation();
-  const navigate     = useNavigate();
   const { toggle }   = useDrawer();
 
   /* left icon swaps automatically */
   const isOnHome   = pathname === '/';
   const LeftIcon   = isOnHome ? MessageSquare : Home;
   const leftHref   = isOnHome ? '/chat' : '/';
-
-  /* chat-only helpers */
-  const handleNewChat = () => navigate(0);   // quick hard-refresh
-
-  const IconButton = ({ icon: Icon, onClick, title, className = "" }: {
-    icon: typeof Home | typeof MessageSquare | typeof MessageCirclePlus | typeof Trash2;
-    onClick: () => void;
-    title: string;
-    className?: string;
-  }) => (
-    <button onClick={onClick} title={title} className={`p-1 ${className}`}>
-      <Icon className="h-5 w-5 text-gray-400 hover:text-mm-accent transition-colors" />
-    </button>
-  );
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-2 sm:gap-3

@@ -8,7 +8,7 @@ const API_BASE    = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 const AUDIENCE    = import.meta.env.VITE_AUTH0_AUDIENCE;
 const STORAGE_KEY = 'medimaven.chatHistory';
 
-interface ConvMeta { cid:string; preview:string; messages:any[] }
+interface ConvMeta { cid:string; preview:string; messages:Array<{user?: string; assistant?: string; citations?: unknown; latency?: number}> }
 
 export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
   const { isAuthenticated, getAccessToken } = useAuth();
@@ -19,7 +19,9 @@ export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
   useEffect(()=>{
     if(!isAuthenticated) return;
     try { setItems(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
-    catch{}
+    catch {
+      // Failed to parse stored history, ignore error
+    }
   },[isAuthenticated]);
 
   // refresh once per open
@@ -50,6 +52,10 @@ export default function HistoryPanel({ onSelect }:{ onSelect: () => void }) {
       {items.map(it=>(
         <li key={it.cid}
             onClick={()=>loadChat(it)}
+            onKeyDown={(e) => e.key === 'Enter' && loadChat(it)}
+            tabIndex={0}
+            role="button"
+            aria-label={`Load chat: ${it.preview}`}
             className="p-2 rounded cursor-pointer truncate text-gray-700 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 text-sm">
           {it.preview}
         </li>

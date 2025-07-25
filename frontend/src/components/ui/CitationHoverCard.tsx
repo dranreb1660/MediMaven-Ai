@@ -73,8 +73,11 @@ export default function CitationHoverCard({
         >
           <div 
             onClick={handleCardClick}
-            className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 -m-4 p-4 rounded-lg transition-colors"
-          >
+            onKeyDown={(e) => e.key === 'Enter' && handleCardClick()}
+            tabIndex={0}
+            role="button"
+            aria-label="Open citation source"
+            className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 -m-4 p-4 rounded-lg transition-colors">
             <div className="flex items-start gap-2">
               <svg className="w-4 h-4 text-mm-accent-600 dark:text-mm-accent-500 mt-0.5 flex-shrink-0" 
                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
