@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, MessageSquare, MessageCirclePlus, Menu} from 'lucide-react';
-import { useDrawer } from '../../context/DrawerContext';
+import { useDrawer } from '../../hooks/useDrawer';
 
 type HeaderVariant = 'welcome' | 'chat';
 interface HeaderProps {

@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { useChat } from '../../hooks/useChat';
+import { useAutoScroll } from '../../hooks/useAutoScroll';
 import MessageList from './MessageList';
 import SiteHeader from '../ui/SiteHeader';
 import Button from '../ui/Button';
@@ -13,7 +14,9 @@ export default function ChatBox({ sendMessage: initialMessage }: Props) {
   const [input, setInput] = useState('');
   const [online, setOnline] = useState(navigator.onLine);
   
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useAutoScroll({
+    dependencies: [messages, isTyping]
+  });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sentRef = useRef(false);
 
@@ -38,10 +41,6 @@ export default function ChatBox({ sendMessage: initialMessage }: Props) {
     };
   }, []);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
 
   const handleSend = () => {
     const text = input.trim();
