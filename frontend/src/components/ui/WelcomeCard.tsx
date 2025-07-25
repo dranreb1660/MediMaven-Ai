@@ -78,6 +78,7 @@ export default function WelcomeCard() {
           onClick={handleSend}
           disabled={!draft.trim() || loading}
           className="h-[56px] w-[56px] rounded-full p-0 flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow"
+          aria-label="Send message"
         >
           {loading ? (
             <div className="animate-pulse text-xl">⏳</div>

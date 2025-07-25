@@ -61,7 +61,7 @@ describe('MediMaven Medical RAG Assistant', () => {
     cy.get('input[placeholder="Ask your health question..."]')
       .type('What are the common treatments for type 2 diabetes?')
     
-    cy.get('button').contains('📤').click()
+    cy.get('button[aria-label="Send message"]').click()
     
     // Chat interface
     cy.url().should('include', '/chat')

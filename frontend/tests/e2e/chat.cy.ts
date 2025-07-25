@@ -38,7 +38,7 @@ describe('MediMaven Chat', () => {
   it('can send a message from welcome page', () => {
     cy.visit('/')
     cy.get('input[placeholder="Ask your health question..."]').type('What are symptoms of diabetes?')
-    cy.get('button').contains('📤').click()
+    cy.get('button[aria-label="Send message"]').click()
     cy.url().should('include', '/chat')
     
     // Look for the query or response - more flexible
