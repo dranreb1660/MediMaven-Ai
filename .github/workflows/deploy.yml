@@ -46,30 +46,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy to S3
+      - name: Deploy to S3 (Simple - No Compression)
         run: |
-          # Upload non-compressed assets first (images, etc) with long cache
+          # Simple sync without compression for debugging
           aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }} \
             --delete \
-            --cache-control "public, max-age=31536000, immutable" \
-            --exclude "*.html" --exclude "service-worker.js" \
-            --exclude "*.js" --exclude "*.css" \
-            --exclude "*.gz" --exclude "*.br"
-          
-          # Upload JS/CSS files as brotli compressed with proper encoding
-          find frontend/dist -name "*.js.br" -o -name "*.css.br" | while read f; do
-            key="${f#frontend/dist/}"
-            original_key="${key%.br}"
-            aws s3 cp "$f" "s3://${{ env.S3_BUCKET }}/$original_key" \
-              --content-encoding br \
-              --content-type "$(case $original_key in *.js) echo 'application/javascript';; *.css) echo 'text/css';; esac)" \
-              --cache-control "public, max-age=31536000, immutable"
-          done
-          
-          # Upload HTML/SW with short cache (uncompressed)
-          aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }} \
-            --exclude "*" --include "*.html" --include "service-worker.js" \
-            --cache-control "public, max-age=300, must-revalidate"
+            --exclude "*.gz" --exclude "*.br" \
+            --cache-control "public, max-age=300"
 
       - name: Invalidate CloudFront
         run: |
