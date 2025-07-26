@@ -1,8 +1,7 @@
 name: Deploy Frontend
-
 on:
   push:
-    branches: [main]
+    branches: [main, test-deployment]  # Added test-deployment for testing
   workflow_dispatch:  # Allow manual triggering
 
 env:
@@ -40,6 +39,9 @@ jobs:
         env:
           NODE_ENV: production
 
+      # ---------- AWS ----------
+      - name: Install AWS CLI
+        uses: aws-actions/setup-aws-cli@v2       # v2 = latest every run
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -50,14 +52,14 @@ jobs:
       - name: Deploy to S3
         run: |
           # Upload assets with long cache (excludes HTML/SW)
-          aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }} \
+          aws s3 sync frontend/dist s3://${{ env.S3_BUCKET }} \
             --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "*.html" --exclude "service-worker.js"
           
           # Upload compressed files with proper encoding
           find frontend/dist -name "*.br" | while read f; do
-            key="${f#frontend/dist/}"
+            key="${f#frontend/dist}"
             aws s3 cp "$f" "s3://${{ env.S3_BUCKET }}/${key%.br}" \
               --content-encoding br --cache-control "public, max-age=31536000, immutable"
           done
