@@ -76,3 +76,10 @@ echo -e "1. Copy the credentials above"
 echo -e "2. Go to: https://github.com/YOUR_USERNAME/YOUR_REPO/settings/secrets/actions"
 echo -e "3. Add both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY secrets"
 echo -e "4. Test your deployment workflow"
+
+
+{
+    "UserId": "AIDAWZEHK5SX32RKH5UUC",
+    "Account": "466287783087",
+    "Arn": "arn:aws:iam::466287783087:user/ml-engineer-kyei"
+}

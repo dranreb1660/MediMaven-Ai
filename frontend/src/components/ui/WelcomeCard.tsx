@@ -32,10 +32,10 @@ export default function WelcomeCard() {
 
       <div className="text-center space-y-2">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-          Medical AI Assistant
+          MediMaven AI Assistant
         </h1>
         <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-          Your personal health companion
+          ...Your personal health companion
         </p>
       </div>
 
