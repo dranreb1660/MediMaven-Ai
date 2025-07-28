@@ -1,0 +1,72 @@
+# Data Configuration for MediMaven ML Pipeline
+# Extracted configuration from notebooks for production use
+
+# Data paths and directories
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  final_dir: "data/final"
+  
+  # File names
+  raw_documents: "medical_documents.jsonl"
+  processed_chunks: "chunks.parquet"
+  embeddings: "chunk_embeddings.pkl"
+  bm25_index: "bm25_index.pkl"
+  negative_samples: "hard_negatives.parquet"
+  ltr_features: "ltr_features.parquet"
+
+# Document processing parameters
+processing:
+  # Chunk parameters (from processors.py)
+  chunk_size: 300
+  chunk_overlap: 50
+  min_chunk_length: 100
+  
+  # Text cleaning
+  remove_special_chars: true
+  normalize_whitespace: true
+  lowercase: false  # Keep original case for medical terms
+  
+  # Language processing
+  language: "en"
+  remove_stopwords: false  # Medical documents might need stopwords
+
+# Embedding parameters
+embeddings:
+  # Model configuration (from embeddings.py)
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  device: "cpu"  # Change to "cuda" if GPU available
+  batch_size: 32
+  max_seq_length: 512
+  
+  # Vector store configuration
+  vector_store:
+    collection_name: "medical_chunks"
+    distance_metric: "cosine"
+    index_type: "hnsw"
+    ef_construction: 128
+    m: 16
+
+# BM25 configuration
+bm25:
+  # Parameters for sparse retrieval
+  k1: 1.2
+  b: 0.75
+  
+  # Preprocessing for BM25
+  tokenization: "word"
+  remove_punctuation: true
+  lowercase: true
+
+# Negative sampling parameters
+negative_sampling:
+  # Hard negative mining (from negative_sampling.py)
+  num_negatives_per_query: 5
+  min_bm25_score: 10.0  # Minimum BM25 score for negatives
+  max_cosine_similarity: 0.95  # Maximum similarity to positive
+  random_seed: 42
+  
+  # Sampling strategy
+  strategy: "mixed"  # Options: "bm25_only", "semantic_only", "mixed"
+  bm25_weight: 0.6
+  semantic_weight: 0.4

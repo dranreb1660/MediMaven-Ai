@@ -1,0 +1,106 @@
+# Model Configuration for MediMaven ML Pipeline
+# Configuration for all ML models used in the system
+
+# LambdaMART model configuration
+lambdamart:
+  # Model hyperparameters (from ltr_models.py)
+  objective: "lambdarank"
+  metric: "ndcg"
+  num_leaves: 63
+  learning_rate: 0.05
+  n_estimators: 1000
+  random_state: 42
+  
+  # Evaluation parameters
+  eval_at: [10]
+  early_stopping_rounds: 50
+  verbose_eval: 100
+  
+  # Feature configuration
+  features:
+    - "bm25_score"
+    - "dense_cosine" 
+    - "chunk_length"
+  
+  # Training parameters
+  train_split: 0.8
+  validation_split: 0.2
+
+# Embedding model configuration
+embedding_model:
+  # Model parameters
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  cache_dir: "models/cache"
+  
+  # Inference parameters
+  batch_size: 32
+  max_seq_length: 512
+  normalize_embeddings: true
+  
+  # Device configuration
+  device: "auto"  # "cpu", "cuda", or "auto"
+  
+# Fine-tuning configuration (for future use)
+fine_tuning:
+  # Model parameters
+  base_model: "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract"
+  learning_rate: 2e-5
+  batch_size: 16
+  num_epochs: 3
+  warmup_steps: 500
+  
+  # Training parameters
+  gradient_accumulation_steps: 2
+  max_grad_norm: 1.0
+  weight_decay: 0.01
+  
+  # Evaluation
+  eval_steps: 500
+  save_steps: 1000
+  
+# Quantization configuration (for model optimization)
+quantization:
+  # Quantization method
+  method: "dynamic"  # "dynamic", "static", "qat"
+  
+  # Target precision
+  dtype: "int8"  # "int8", "fp16"
+  
+  # Performance parameters
+  optimize_for_inference: true
+  use_onnx: false
+
+# Model serving configuration
+serving:
+  # Batch processing
+  max_batch_size: 32
+  batch_timeout: 100  # milliseconds
+  
+  # Caching
+  enable_cache: true
+  cache_size: 1000
+  cache_ttl: 3600  # seconds
+  
+  # Model loading
+  lazy_loading: true
+  model_warmup: true
+
+# Evaluation metrics
+evaluation:
+  # Ranking metrics
+  ranking_metrics:
+    - "ndcg@5"
+    - "ndcg@10"
+    - "ndcg@20"
+    - "map@10"
+    - "mrr@10"
+  
+  # Retrieval metrics
+  retrieval_metrics:
+    - "precision@5"
+    - "recall@10"
+    - "f1@10"
+  
+  # Cross-validation
+  cv_folds: 5
+  stratified: true

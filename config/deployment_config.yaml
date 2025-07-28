@@ -1,0 +1,330 @@
+# MediMaven Deployment Configuration
+# Production deployment settings
+
+version: "deployment"
+description: "MediMaven production deployment configuration"
+
+# Environment configuration
+environment:
+  name: "production"  # or "staging", "development"
+  debug: false
+  testing: false
+
+# Server configuration
+server:
+  # Basic settings
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  
+  # Advanced settings
+  worker_class: "uvicorn.workers.UvicornWorker"
+  worker_connections: 1000
+  max_requests: 1000
+  max_requests_jitter: 100
+  timeout: 300
+  keepalive: 5
+  
+  # SSL/TLS (for production)
+  ssl_keyfile: null  # Path to SSL key file
+  ssl_certfile: null  # Path to SSL certificate file
+  
+  # CORS settings
+  cors:
+    allow_origins: ["*"]  # Restrict in production
+    allow_methods: ["GET", "POST"]
+    allow_headers: ["*"]
+    allow_credentials: false
+
+# Database configuration
+database:
+  # Primary database (PostgreSQL recommended for production)
+  primary:
+    type: "postgresql"
+    host: "localhost"
+    port: 5432
+    name: "medimaven_prod"
+    user: "medimaven_user"
+    password_env: "DB_PASSWORD"  # Environment variable name
+    
+    # Connection pooling
+    min_connections: 5
+    max_connections: 20
+    connection_timeout: 30
+    
+  # Cache database (Redis)
+  cache:
+    type: "redis"
+    host: "localhost"
+    port: 6379
+    db: 0
+    password_env: "REDIS_PASSWORD"
+    
+    # Redis settings
+    max_connections: 50
+    connection_timeout: 5
+    socket_keepalive: true
+
+# Model serving configuration
+model_serving:
+  # Model loading
+  load_on_startup: true
+  lazy_loading: false
+  preload_embeddings: true
+  
+  # Model paths
+  model_dir: "/app/models"
+  embedding_model_path: "/app/models/embeddings"
+  ltr_model_path: "/app/models/ltr"
+  generation_model_path: "/app/models/generation"
+  
+  # Hardware acceleration
+  device: "cuda"  # or "cpu" for CPU-only deployment
+  gpu_memory_fraction: 0.8
+  
+  # Model optimization
+  enable_quantization: true
+  quantization_method: "dynamic"
+  enable_onnx: false  # Set to true for ONNX optimization
+  
+  # Batch processing
+  batch_size: 8
+  max_batch_delay: 50  # milliseconds
+
+# API configuration
+api:
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+    
+  # Request/response limits
+  max_query_length: 1000
+  max_response_length: 5000
+  request_timeout: 120
+  
+  # API versioning
+  version: "v1"
+  base_path: "/api/v1"
+  
+  # Authentication (configure as needed)
+  authentication:
+    enabled: false  # Set to true for production
+    type: "bearer_token"  # or "api_key", "oauth2"
+    token_expiry: 3600  # seconds
+
+# Monitoring and observability
+monitoring:
+  # Health checks
+  health_check:
+    enabled: true
+    endpoint: "/health"
+    interval: 30  # seconds
+    
+  # Metrics
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+    include_model_metrics: true
+    
+  # Logging
+  logging:
+    level: "INFO"
+    format: "json"  # for structured logging
+    output: "file"  # or "stdout", "syslog"
+    file_path: "/var/log/medimaven/app.log"
+    
+    # Log rotation
+    max_size: "100MB"
+    backup_count: 10
+    
+    # Request logging
+    log_requests: true
+    log_responses: false  # Set to true for debugging
+    
+  # Distributed tracing
+  tracing:
+    enabled: false  # Set to true for production monitoring
+    service_name: "medimaven-api"
+    jaeger_endpoint: "http://jaeger:14268/api/traces"
+
+# Security configuration
+security:
+  # Input validation
+  input_validation:
+    enabled: true
+    max_query_length: 1000
+    sanitize_input: true
+    
+  # Content filtering
+  content_filter:
+    enabled: true
+    inappropriate_content_threshold: 0.9
+    
+  # Medical safety
+  medical_safety:
+    disclaimer_required: true
+    prevent_diagnosis: true
+    prevent_treatment_advice: true
+    content_warnings: true
+    
+  # Data privacy
+  privacy:
+    log_sanitization: true
+    pii_detection: true
+    data_retention_days: 90
+
+# Caching configuration
+caching:
+  # Response caching
+  response_cache:
+    enabled: true
+    ttl: 3600  # 1 hour
+    max_size: "1GB"
+    
+  # Model cache
+  model_cache:
+    enabled: true
+    embedding_cache_size: "2GB"
+    retrieval_cache_size: "500MB"
+    
+  # Query result cache
+  query_cache:
+    enabled: true
+    ttl: 1800  # 30 minutes
+    max_entries: 10000
+
+# Backup and recovery
+backup:
+  # Database backups
+  database_backup:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    retention_days: 30
+    backup_path: "/backups/database"
+    
+  # Model backups
+  model_backup:
+    enabled: true
+    schedule: "0 3 * * 0"  # Weekly on Sunday at 3 AM
+    retention_weeks: 4
+    backup_path: "/backups/models"
+
+# Auto-scaling configuration
+scaling:
+  # Horizontal scaling
+  horizontal:
+    enabled: false  # Enable for Kubernetes deployment
+    min_replicas: 2
+    max_replicas: 10
+    target_cpu_percent: 70
+    target_memory_percent: 80
+    
+  # Vertical scaling
+  vertical:
+    enabled: false
+    min_cpu: "500m"
+    max_cpu: "2000m"
+    min_memory: "1Gi"
+    max_memory: "8Gi"
+
+# Deployment targets
+deployment_targets:
+  # Docker configuration
+  docker:
+    image_name: "medimaven/api"
+    image_tag: "latest"
+    registry: "docker.io"
+    
+    # Resource limits
+    cpu_limit: "2000m"
+    memory_limit: "4Gi"
+    cpu_request: "500m"
+    memory_request: "1Gi"
+    
+  # Kubernetes configuration
+  kubernetes:
+    namespace: "medimaven"
+    service_type: "ClusterIP"
+    ingress_enabled: true
+    ingress_host: "api.medimaven.com"
+    
+    # Storage
+    persistent_volume:
+      enabled: true
+      size: "50Gi"
+      storage_class: "ssd"
+      
+  # Cloud deployment (AWS example)
+  aws:
+    region: "us-west-2"
+    
+    # ECS configuration
+    ecs:
+      cluster_name: "medimaven-cluster"
+      service_name: "medimaven-api"
+      task_definition: "medimaven-api:latest"
+      
+    # Load balancer
+    load_balancer:
+      type: "application"
+      scheme: "internet-facing"
+      ssl_policy: "ELBSecurityPolicy-TLS-1-2-2017-01"
+      
+    # RDS configuration
+    rds:
+      instance_class: "db.t3.medium"
+      storage_type: "gp2"
+      allocated_storage: 100
+      backup_retention_period: 7
+
+# Feature flags
+feature_flags:
+  # Experimental features
+  experimental_features: false
+  
+  # Model features
+  enable_fine_tuned_models: false
+  enable_ensemble_models: false
+  
+  # API features
+  enable_batch_processing: true
+  enable_streaming_responses: false
+  
+  # Analytics
+  enable_usage_analytics: true
+  enable_performance_analytics: true
+
+# Maintenance
+maintenance:
+  # Scheduled maintenance
+  maintenance_window:
+    enabled: false
+    start_time: "02:00"
+    duration_hours: 2
+    timezone: "UTC"
+    
+  # Graceful shutdown
+  graceful_shutdown:
+    enabled: true
+    timeout: 30  # seconds
+    
+  # Health checks during deployment
+  deployment_health_check:
+    enabled: true
+    initial_delay: 60  # seconds
+    timeout: 300  # seconds
+    failure_threshold: 3
+
+# Environment variables (reference)
+environment_variables:
+  required:
+    - "DB_PASSWORD"
+    - "REDIS_PASSWORD"
+    - "MODEL_PATH"
+    
+  optional:
+    - "API_KEY"
+    - "WANDB_API_KEY"
+    - "SENTRY_DSN"

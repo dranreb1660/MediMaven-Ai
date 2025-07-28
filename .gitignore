@@ -1,55 +1,111 @@
+# Python
 venv/
 __pycache__/
-.ipynb_checkpoints
 *.pyc
-*.pkl
-*.log
-.DS_Store
-models/
-embeddings/
-data/
-*.csv
-data/raw
-data/*
-wandb/
-.env
-*.db
-.zen
-.gdrive_cred.json
-*.ipynb
-cloudflared
-
-./mount_gdrive.sh
-/setup_colab.sh
-./cloudflared
-
-/medimaven-qa-data
-Resume_Docs
-notebooks/v1.1/08_rag_inference.ipynb
-.dockerignore
-*.tsv
-
-
-# Ignore frontend build artifacts
-# Dependencies
-node_modules/
-
-# Build output
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# TypeScript build info
-tsconfig.tsbuildinfo
+# Jupyter Notebooks (except documentation ones)
+.ipynb_checkpoints
+# Ignore most notebooks but allow specific important ones
+*.ipynb
+# Allow documentation/example notebooks
+!docs/examples/*.ipynb
+!tutorials/*.ipynb
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+# Data files (large datasets)
+data/raw/
+data/processed/
+data/embeddings/
+data/models/
+data/cache/
+# Allow example/test data
+!data/examples/
+!data/test/
 
-# Logs
+# Model files (typically large)
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.ckpt
+models/*.pth
+models/*.bin
+# Allow model configs and small files
+!models/*.json
+!models/*.yaml
+!models/*.yml
+!models/README.md
+
+# Embeddings (typically large)
+embeddings/*.npy
+embeddings/*.npz
+embeddings/*.pkl
+# Allow embeddings configs
+!embeddings/*.json
+!embeddings/*.yaml
+!embeddings/*.yml
+
+# Large data files
+*.csv
+*.tsv
+*.parquet
+*.h5
+*.hdf5
+# Allow small config/example CSV files
+!config/*.csv
+!data/examples/*.csv
+!data/test/*.csv
+
+# Logs and temporary files
 *.log
+*.tmp
+*.temp
+logs/
+cache/
+.cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.gdrive_cred.json
+config/secrets.yaml
+config/credentials.yaml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Experiment tracking
+wandb/
+mlruns/
+.mlflow/
+tensorboard_logs/
 
 # OS-specific files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Editor/IDE
@@ -61,3 +117,21 @@ Thumbs.db
 *.sln
 *.sw?
 .tmp.driveupload/
+
+# Project-specific
+cloudflared
+./mount_gdrive.sh
+/setup_colab.sh
+./cloudflared
+/medimaven-qa-data
+Resume_Docs
+.zen
+
+# Frontend build artifacts
+node_modules/
+dist/
+build/
+tsconfig.tsbuildinfo
+
+# Docker
+.dockerignore
