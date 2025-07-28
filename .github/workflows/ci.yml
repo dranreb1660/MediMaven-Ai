@@ -96,9 +96,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
       
-      - name: Install dependencies
+      - name: Install PyTorch first (required for autoawq build)
         run: |
           pip install --upgrade pip
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+      
+      - name: Install remaining dependencies
+        run: |
           pip install -r requirements.txt
           pip install aiosqlite
       
