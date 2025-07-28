@@ -135,3 +135,5 @@ tsconfig.tsbuildinfo
 
 # Docker
 .dockerignore
+data/*
+models/*
