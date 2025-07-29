@@ -32,7 +32,7 @@ describe('MediMaven Chat', () => {
 
   it('loads the app', () => {
     cy.visit('/')
-    cy.contains('Medical AI Assistant').should('be.visible')
+    cy.contains('MediMaven AI Assistant').should('be.visible')
   })
 
   it('can send a message from welcome page', () => {

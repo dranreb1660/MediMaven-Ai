@@ -54,7 +54,7 @@ describe('MediMaven Medical RAG Assistant', () => {
 
   it('completes full medical query flow', () => {
     // Welcome page
-    cy.contains('Medical AI Assistant').should('be.visible')
+    cy.contains('MediMaven AI Assistant').should('be.visible')
     cy.contains(/health companion/i).should('be.visible')
     
     // Ask question from welcome page
