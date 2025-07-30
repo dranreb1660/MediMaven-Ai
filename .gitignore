@@ -137,3 +137,5 @@ tsconfig.tsbuildinfo
 .dockerignore
 data/*
 models/*
+docs/Resume_Docs
+docs/aws-iam-policy.json
