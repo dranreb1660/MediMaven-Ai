@@ -18,7 +18,7 @@ The performance of the LTR models is critical for ensuring that the most relevan
 
 ### BGE Cross-Encoder
 
-**Notebook**: `04b_ltr_train_colbert.ipynb`
+**Notebook**: [`04b_ltr_train_bge-ce.ipynb`](../notebooks/v1.1/04b_ltr_train_bge_ce.ipynb)
 
 The BGE cross-encoder is the final stage of our re-ranking pipeline. Its ability to accurately rank documents is measured by its NDCG@10 score on the validation set.
 
@@ -29,7 +29,7 @@ The BGE cross-encoder is the final stage of our re-ranking pipeline. Its ability
 
 ### LambdaMART
 
-**Notebook**: `04a_ltr_train_lambdamart.ipynb`
+**Notebook**: [`04b_ltr_train_bge-ce.ipynb`](../notebooks/v1.1/04a_ltr_train_lambdamart.ipynb)
 
 The LambdaMART model provides the initial, fast re-ranking of documents. It is trained to optimize the NDCG metric directly, ensuring that the top candidates passed to the cross-encoder are of high quality.
 
@@ -44,7 +44,7 @@ The performance of the fine-tuned Llama 3 model is evaluated by its ability to l
 
 ### Llama-3 8B QLoRA Fine-tuning
 
-**Notebook**: `05_llama3_qlora.ipynb`
+**Notebook**: [`05_llama3_qlora.ipynb`](../notebooks/v1.1/05_llama3_qlora.ipynb)
 
 The validation loss indicates how well the model is generalizing to unseen data. A lower loss indicates better performance.
 

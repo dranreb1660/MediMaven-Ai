@@ -1,4 +1,4 @@
-# 🩺 MediMaven — Production-Grade Medical RAG Assistant
+# 🩺 MediMaven — Medical RAG Assistant
 
 ![CI](https://img.shields.io/badge/Built_with-Docker-blue) ![AWS](https://img.shields.io/badge/Cloud-AWS-%23FF9900) ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
