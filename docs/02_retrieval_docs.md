@@ -66,7 +66,7 @@ $$
 \frac{w_s}{k_{\mathrm{rrf}} + \mathrm{rank}_s(d)}
 $$
 
-Implementation lives in `Retriever.fuse()` with defaults:
+Implementation lives in [`Retriever.fuse()`](../backend/services/retrieve.py) with defaults:
 
 ```python
 k_rrf   = 60
