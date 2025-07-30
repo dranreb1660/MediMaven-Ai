@@ -2,7 +2,7 @@
 const DEFAULT_TIMEOUT = 180_000; // 3 minutes
 const DEFAULT_RETRIES = 2;
 
-export async function fetchJson<T = any>(
+export async function fetchJson<T = unknown>(
   url: string,
   options: RequestInit = {},
   token?: string,
@@ -31,8 +31,10 @@ export async function fetchJson<T = any>(
       }
       
       return res;
-    } catch (err: any) {
-      if (err.name === 'AbortError') throw new Error('Request timeout');
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
       if (attempt < DEFAULT_RETRIES) {
         await new Promise(r => setTimeout(r, 1000 * attempt));
         return attemptFetch(attempt + 1);

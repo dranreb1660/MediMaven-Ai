@@ -1,6 +1,7 @@
 import SiteHeader from '../components/ui/SiteHeader';
 import WelcomeCard from '../components/ui/WelcomeCard';
 import Container from '../components/layout/Container';
+import Disclaimer from '../components/ui/Disclaimer';
 
 export default function WelcomePage() {
   return (
@@ -10,8 +11,11 @@ export default function WelcomePage() {
           
           <SiteHeader variant="welcome" />
           
-          <div className="flex-1 flex items-center justify-center p-4">
-            <WelcomeCard />
+          <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex items-center justify-center p-4">
+              <WelcomeCard />
+            </div>
+            <Disclaimer />
           </div>
           
         </div>

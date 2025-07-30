@@ -12,19 +12,19 @@ export default function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed';
+    'rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed font-medium active:scale-95 touch-manipulation';
 
   const variants = {
     solid:
-      'bg-mm-accent-500 text-white hover:bg-mm-accent-600 dark:bg-mm-accent-700 dark:hover:bg-mm-accent-600',
+      'bg-mm-accent-500 text-white hover:bg-mm-accent-600 dark:bg-mm-accent-600 dark:hover:bg-mm-accent-500 shadow-md hover:shadow-lg',
     outline:
-      'border border-mm-accent-500 text-mm-accent-500 hover:bg-mm-accent-50 dark:border-mm-accent-700 dark:text-mm-accent-400 dark:hover:bg-mm-accent-900',
+      'border-2 border-mm-accent-500 text-mm-accent-500 hover:bg-mm-accent-50 dark:border-mm-accent-400 dark:text-mm-accent-400 dark:hover:bg-mm-accent-900/20',
   };
 
   const sizes = {
-    sm: 'text-xs px-2 py-1',
-    md: 'text-sm px-3 py-1.5',
-    lg: 'text-base px-4 py-2',
+    sm: 'text-sm px-4 py-2.5 min-h-[44px]',
+    md: 'text-base px-5 py-3 min-h-[48px]',
+    lg: 'text-lg px-6 py-3.5 min-h-[52px]',
   };
 
   return (

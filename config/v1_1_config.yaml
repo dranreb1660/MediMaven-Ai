@@ -1,0 +1,299 @@
+# MediMaven v1.1 Configuration
+# Enhanced RAG system with dense retrieval and LTR ranking
+
+version: "1.1"
+description: "MediMaven v1.1 - Enhanced RAG with dense retrieval + LambdaMART LTR"
+
+# Data configuration
+data:
+  # Input data paths
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  embeddings_dir: "data/embeddings"
+  final_data_dir: "data/final"
+  
+  # Data processing settings
+  chunk_size: 512
+  chunk_overlap: 100
+  max_chunk_length: 2048
+  
+  # Enhanced preprocessing
+  enable_medical_preprocessing: true
+  medical_entity_extraction: true
+  term_normalization: true
+  
+  # Supported data formats
+  supported_formats: ["json", "jsonl", "csv", "txt", "xml"]
+
+# Retrieval configuration
+retrieval:
+  # Multiple retrieval methods
+  methods: ["bm25", "dense", "hybrid"]
+  
+  # BM25 settings (enhanced)
+  bm25:
+    k1: 1.5
+    b: 0.8
+    epsilon: 0.25
+    
+  # Dense retrieval settings
+  dense:
+    model_name: "sentence-transformers/all-mpnet-base-v2"
+    embedding_dim: 768
+    similarity_metric: "cosine"
+    
+  # Hybrid retrieval settings
+  hybrid:
+    bm25_weight: 0.3
+    dense_weight: 0.7
+    normalization: "min_max"
+    
+  # Search parameters
+  max_results: 200
+  min_score_threshold: 0.05
+
+# Enhanced ranking configuration with LTR
+ranking:
+  method: "lambdamart"
+  
+  # LambdaMART settings
+  lambdamart:
+    model_path: "models/ltr/lambdamart_model.pkl"
+    n_estimators: 100
+    learning_rate: 0.1
+    max_depth: 6
+    
+    # Feature configuration
+    features:
+      - "bm25_score"
+      - "dense_score"
+      - "query_document_similarity"
+      - "document_length"
+      - "term_frequency_features"
+      - "position_features"
+      
+  # Reranking parameters
+  max_rerank_candidates: 100
+  min_rerank_threshold: 0.1
+  
+# Advanced embedding configuration
+embeddings:
+  # Primary embedding model
+  primary:
+    model_name: "sentence-transformers/all-mpnet-base-v2"
+    model_type: "sentence_transformer"
+    embedding_dim: 768
+    batch_size: 16
+    device: "cuda"
+    normalize: true
+    
+  # Secondary embedding model for diversity
+  secondary:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+    model_type: "sentence_transformer"
+    embedding_dim: 384
+    batch_size: 32
+    device: "cuda"
+    normalize: true
+    
+  # Embedding fusion settings
+  fusion:
+    method: "concatenation"  # or "weighted_average"
+    weights: [0.7, 0.3]
+
+# Enhanced generation configuration
+generation:
+  # Model settings
+  model_type: "transformers"
+  model_name: "microsoft/DialoGPT-medium"  # Placeholder for actual medical LLM
+  
+  # Generation parameters
+  max_new_tokens: 800
+  temperature: 0.15
+  top_p: 0.9
+  do_sample: true
+  repetition_penalty: 1.1
+  
+  # Advanced response formatting
+  include_sources: true
+  max_sources: 8
+  source_attribution: "detailed"
+  medical_disclaimer: true
+
+# Enhanced RAG pipeline configuration
+rag:
+  max_context_length: 4096
+  max_sources: 8
+  min_confidence_threshold: 0.2
+  
+  # Advanced context management
+  deduplication_threshold: 0.7
+  source_diversity: true
+  context_compression: true
+  
+  # Quality control
+  hallucination_detection: true
+  fact_verification: true
+  confidence_calibration: true
+
+# Comprehensive evaluation configuration
+evaluation:
+  metrics: 
+    - "relevance"
+    - "accuracy" 
+    - "coverage"
+    - "coherence"
+    - "faithfulness"
+    - "medical_accuracy"
+    
+  test_data_path: "data/test/test_queries_v1_1.jsonl"
+  
+  # Enhanced evaluation thresholds
+  min_relevance_score: 0.65
+  min_accuracy_score: 0.75
+  min_medical_accuracy: 0.8
+  
+  # Automated evaluation
+  enable_llm_evaluation: true
+  evaluation_model: "gpt-4"
+
+# Advanced logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_file: "logs/medimaven_v1_1.log"
+  
+  # Component-specific logging
+  components:
+    retrieval: "INFO"
+    ranking: "DEBUG"
+    generation: "INFO"
+    pipeline: "INFO"
+    ltr: "DEBUG"
+    
+  # Advanced logging features
+  structured_logging: true
+  log_rotation: true
+  max_log_size: "100MB"
+  backup_count: 5
+
+# Enhanced performance configuration
+performance:
+  # Memory management
+  max_memory_usage: "8GB"
+  batch_processing: true
+  memory_efficient_mode: true
+  
+  # Advanced caching
+  enable_caching: true
+  cache_dir: "cache/"
+  cache_ttl: 7200  # 2 hours
+  cache_compression: true
+  
+  # Parallel processing
+  num_workers: 4
+  use_multiprocessing: true
+  gpu_acceleration: true
+  
+  # Model optimization
+  enable_quantization: false  # Set to true for production
+  quantization_method: "dynamic"
+
+# Enhanced output configuration
+output:
+  format: "json"
+  include_metadata: true
+  include_debug_info: true
+  
+  # Detailed response structure
+  response_fields:
+    - "answer"
+    - "confidence"
+    - "sources"
+    - "metadata"
+    - "reasoning_trace"
+    - "fact_checks"
+    - "medical_disclaimer"
+
+# Model paths
+model_paths:
+  embeddings: "models/embeddings/"
+  retrieval: "models/retrieval/"
+  generation: "models/generation/"
+  ltr: "models/ltr/"
+  quantized: "models/quantized/"
+
+# Fine-tuning configuration
+fine_tuning:
+  enable: false  # Enable for custom model training
+  
+  # Data settings
+  training_data: "data/fine_tune/medical_qa_pairs.jsonl"
+  validation_split: 0.1
+  
+  # Training parameters
+  learning_rate: 2e-5
+  batch_size: 8
+  num_epochs: 3
+  warmup_steps: 500
+  
+  # LoRA settings for efficient fine-tuning
+  lora:
+    enable: true
+    rank: 16
+    alpha: 32
+    dropout: 0.1
+
+# LTR Training Configuration
+ltr_training:
+  # Training data
+  training_data: "data/ltr/training_data.txt"
+  validation_data: "data/ltr/validation_data.txt"
+  test_data: "data/ltr/test_data.txt"
+  
+  # Model parameters
+  model_type: "LambdaMART"
+  n_estimators: 200
+  learning_rate: 0.15
+  max_depth: 8
+  min_samples_split: 10
+  
+  # Training settings
+  early_stopping: true
+  patience: 20
+  validation_metric: "ndcg"
+  
+  # Feature engineering
+  feature_selection: true
+  feature_importance_threshold: 0.01
+
+# Experiment tracking
+experiment:
+  name: "medimaven_v1_1_enhanced"
+  description: "Enhanced RAG system with dense retrieval and LambdaMART LTR"
+  tags: ["enhanced", "dense_retrieval", "lambdamart", "v1.1"]
+  
+  # Results tracking
+  results_dir: "results/v1_1/"
+  save_predictions: true
+  save_metrics: true
+  save_model_outputs: true
+  
+  # Experiment management
+  use_wandb: false  # Set to true for Weights & Biases integration
+  wandb_project: "medimaven"
+
+# Safety and compliance
+safety:
+  # Content filtering
+  enable_content_filter: true
+  inappropriate_content_threshold: 0.8
+  
+  # Medical safety
+  medical_disclaimer_required: true
+  prevent_diagnosis: true
+  prevent_treatment_advice: true
+  
+  # Privacy
+  pii_detection: true
+  data_anonymization: true

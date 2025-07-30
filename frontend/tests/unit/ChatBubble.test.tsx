@@ -1,0 +1,180 @@
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
+import axios from 'axios'
+import Chat from '../../src/pages/Chat'
+import { renderWithProviders } from '../utils'
+
+// Mock the streamChat function instead of axios
+vi.mock('../../src/lib/streamChat', () => ({
+  streamChat: vi.fn()
+}))
+
+// Mock the auth hook
+vi.mock('../../src/hooks/useAuth', () => ({
+  useAuth: () => ({
+    isAuthenticated: false,
+    getAccessToken: vi.fn().mockResolvedValue(undefined)
+  })
+}))
+
+// Mock the chat store
+const mockMessages: Array<{ id: string; role: string; content: string }> = []
+const mockStore = {
+  cid: null,
+  setCid: vi.fn(),
+  messages: mockMessages,
+  addMessage: vi.fn((message) => {
+    mockMessages.push(message)
+  }),
+  editMessage: vi.fn((id, updater) => {
+    const index = mockMessages.findIndex(m => m.id === id)
+    if (index >= 0) {
+      mockMessages[index] = updater(mockMessages[index])
+    }
+  }),
+  reset: vi.fn(() => {
+    mockMessages.length = 0
+  }),
+  isLoadingFromHistory: false
+}
+
+vi.mock('../../src/store/useChatStore', () => ({
+  useChatStore: Object.assign(
+    () => mockStore,
+    {
+      getState: () => mockStore
+    }
+  )
+}))
+
+vi.mock('axios')
+const mockedAxios = {
+  post: vi.fn(),
+  get: vi.fn(),
+} as {
+  post: MockedFunction<typeof axios.post>
+  get: MockedFunction<typeof axios.get>
+}
+Object.assign(axios, mockedAxios)
+
+describe('Chat Page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMessages.length = 0 // Clear messages array
+  })
+
+  it('renders chat interface', () => {
+    renderWithProviders(<Chat />)
+    
+    expect(screen.getByPlaceholderText(/ask.*health.*question/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /send message/i })).toBeInTheDocument()
+  })
+
+  it('sends message and displays response', async () => {
+    const { streamChat } = await import('../../src/lib/streamChat')
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
+    
+    // Mock the streaming response
+    mockStreamChat.mockImplementation(async function* () {
+      yield { type: 'token', token: 'Based on current ' }
+      yield { type: 'token', token: 'medical guidelines, ' }
+      yield { type: 'token', token: 'migraines can have various causes...' }
+      yield { type: 'done', meta: {
+        answer: 'Based on current medical guidelines, migraines can have various causes...',
+        citations: [],
+        conversation_id: 'test-123',
+        latency: 1.5
+      }}
+    })
+    
+    renderWithProviders(<Chat />)
+    
+    const input = screen.getByPlaceholderText(/ask.*health.*question/i)
+    const sendBtn = screen.getByRole('button', { name: /send message/i })
+    
+    // Type and send
+    fireEvent.change(input, { target: { value: 'What causes migraines?' } })
+    fireEvent.click(sendBtn)
+    
+    // Wait for user message to be added to store
+    await waitFor(() => {
+      expect(mockStore.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'user',
+          content: 'What causes migraines?'
+        })
+      )
+    }, { timeout: 2000 })
+    
+    // Wait for assistant message to be added
+    await waitFor(() => {
+      expect(mockStore.addMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: 'assistant'
+        })
+      )
+    }, { timeout: 5000 })
+    
+    // Verify streamChat was called
+    expect(mockStreamChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'What causes migraines?'
+      }),
+      expect.any(String), // API base
+      undefined // token
+    )
+  })
+
+  it('handles streaming responses', async () => {
+    const { streamChat } = await import('../../src/lib/streamChat')
+    const mockStreamChat = streamChat as MockedFunction<typeof streamChat>
+    
+    // Mock streaming with multiple token chunks
+    mockStreamChat.mockImplementation(async function* () {
+      yield { type: 'token', token: 'Common ' }
+      yield { type: 'token', token: 'symptoms ' }
+      yield { type: 'token', token: 'include headache, ' }
+      yield { type: 'token', token: 'nausea, and sensitivity to light.' }
+      yield { type: 'done', meta: {
+        answer: 'Common symptoms include headache, nausea, and sensitivity to light.',
+        citations: [],
+        conversation_id: 'test-456',
+        latency: 0.8
+      }}
+    })
+    
+    renderWithProviders(<Chat />)
+    
+    const input = screen.getByPlaceholderText(/ask.*health.*question/i)
+    const sendBtn = screen.getByRole('button', { name: /send message/i })
+    fireEvent.change(input, { target: { value: 'Explain symptoms' } })
+    fireEvent.click(sendBtn)
+    
+    // Wait for streaming mock to be called
+    await waitFor(() => {
+      expect(mockStreamChat).toHaveBeenCalled()
+    }, { timeout: 5000 })
+    
+    // Verify edit message was called for streaming tokens
+    await waitFor(() => {
+      expect(mockStore.editMessage).toHaveBeenCalled()
+    }, { timeout: 1000 })
+  })
+
+  it('disables input while processing', async () => {
+    mockedAxios.post.mockImplementationOnce(() => 
+      new Promise(resolve => setTimeout(resolve, 100))
+    )
+    
+    renderWithProviders(<Chat />)
+    
+    const input = screen.getByPlaceholderText(/ask.*health.*question/i)
+    const sendBtn = screen.getByRole('button', { name: /send message/i })
+    
+    fireEvent.change(input, { target: { value: 'Test query' } })
+    fireEvent.click(sendBtn)
+    
+    expect(input).toBeDisabled()
+    expect(sendBtn).toBeDisabled()
+  })
+})

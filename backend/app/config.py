@@ -3,10 +3,11 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True, verbose=True)
 
 # Environment detection
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+ENVIRONMENT = ENVIRONMENT.lower()
 IS_PRODUCTION = ENVIRONMENT == "production"
 
 # Logging configuration
@@ -30,7 +31,7 @@ DATABASE_POOL_TIMEOUT = int(os.getenv("DATABASE_POOL_TIMEOUT", "30"))
 DATABASE_POOL_RECYCLE = int(os.getenv("DATABASE_POOL_RECYCLE", "3600"))
 
 # Authentication
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "medimaven-dev.us.auth0.com")
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "medimaven-tenant-dev.us.auth0.com")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "https://api.medimaven-ai.com")
 
 # Medical retrieval parameters (environment-specific)

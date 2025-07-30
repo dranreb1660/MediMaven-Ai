@@ -1,16 +1,6 @@
-import { Link } from 'react-router-dom';
-import {
-  TrashIcon,
-  HomeIcon,
-  ChatBubbleLeftRightIcon,
-  ArrowPathIcon,
-  ArrowLeftEndOnRectangleIcon as LogInIcon,
-  ArrowRightOnRectangleIcon as LogOutIcon,
-} from '@heroicons/react/24/outline';
-import DarkToggle from './DarkToggle';
-import { useChatStore } from '../../store/useChatStore';
-import { useAuth } from '../../context/AuthContext';
-import MyHistoryControl from '../history/MyHistoryControl';
+import { Link, useLocation } from 'react-router-dom';
+import { Home, MessageSquare, MessageCirclePlus, Menu} from 'lucide-react';
+import { useDrawer } from '../../hooks/useDrawer';
 
 type HeaderVariant = 'welcome' | 'chat';
 interface HeaderProps {
@@ -19,82 +9,44 @@ interface HeaderProps {
 }
 
 export default function SiteHeader({ variant, onClear }: HeaderProps) {
-  const { cid, reset } = useChatStore();
-  const { isAuthenticated, login, logout, isLoading } = useAuth();
+  const { pathname } = useLocation();
+  const { toggle }   = useDrawer();
 
-  const LeftIcon = variant === 'chat' ? HomeIcon : ChatBubbleLeftRightIcon;
-  const leftHref = variant === 'chat' ? '/' : '/chat';
-
-  const handleNewChat = async () => {
-    if (cid) {
-      fetch(`${import.meta.env.VITE_API_URL}/chat/end`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation_id: cid }),
-      }).catch(console.error);
-    }
-    reset();
-    window.scrollTo({ top: 0 });
-  };
-
-  const IconButton = ({ icon: Icon, onClick, title, className = "" }: {
-    icon: typeof HomeIcon;
-    onClick: () => void;
-    title: string;
-    className?: string;
-  }) => (
-    <button onClick={onClick} title={title} className={`p-1 ${className}`}>
-      <Icon className="h-5 w-5 text-gray-400 hover:text-mm-accent transition-colors" />
-    </button>
-  );
+  /* left icon swaps automatically */
+  const isOnHome   = pathname === '/';
+  const LeftIcon   = isOnHome ? MessageSquare : Home;
+  const leftHref   = isOnHome ? '/chat' : '/';
 
   return (
-    <div className="sticky top-0 z-20 w-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm">
-      <div className="max-w-screen-lg mx-auto flex items-center justify-between px-4 py-2">
-        
-        {/* Left: Navigation + Logo */}
-        <div className="flex items-center gap-3">
-          <Link to={leftHref}>
-            <LeftIcon className="h-5 w-5 text-gray-400 hover:text-mm-accent transition-colors" />
-          </Link>
-          <h1 className="font-bold text-sm sm:text-base text-gray-900 dark:text-mm-accent">
-            MediMaven AI
-          </h1>
-        </div>
+    <header className="sticky top-0 z-30 flex items-center gap-2 sm:gap-3
+                       px-4 py-4 bg-white dark:bg-gray-900 text-gray-900 dark:text-white 
+                       shadow-sm border-b border-gray-200 dark:border-gray-800">
+      {/* ––––– left cluster ––––– */}
+      <Link to={leftHref} aria-label={isOnHome ? 'Open chat' : 'Home'} 
+            className="p-2 -m-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <LeftIcon size={22} className="text-mm-accent" />
+      </Link>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-2">
-          {variant === 'chat' && (
-            <>
-              <IconButton 
-                icon={ArrowPathIcon} 
-                onClick={handleNewChat} 
-                title="New chat" 
-              />
-              {onClear && (
-                <IconButton 
-                  icon={TrashIcon} 
-                  onClick={onClear} 
-                  title="Clear chat"
-                  className="hover:text-red-500"
-                />
-              )}
-            </>
-          )}
+      <h1 className="flex-1 font-bold text-mm-accent text-lg">
+        MediMaven
+      </h1>
 
-          <DarkToggle />
-          <MyHistoryControl />
+      {/* ––––– centre actions – chat page only ––––– */}
+      {variant === 'chat' && onClear && (
+        <button onClick={onClear} title="New chat" 
+                className="p-2 -m-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <MessageCirclePlus size={20} className="text-gray-600 dark:text-gray-400" />
+        </button>
+      )}
 
-          {!isLoading && (
-            <IconButton
-              icon={isAuthenticated ? LogOutIcon : LogInIcon}
-              onClick={isAuthenticated ? logout : login}
-              title={isAuthenticated ? "Logout" : "Login"}
-              className={isAuthenticated ? "hover:text-red-500" : ""}
-            />
-          )}
-        </div>
-      </div>
-    </div>
+      {/* ––––– dark-mode toggle (always visible) ––––– */}
+      {/* <DarkToggle className="hidden sm:inline-flex" /> */}
+
+      {/* ––––– drawer toggle ––––– */}
+      <button onClick={toggle} title="Menu" 
+              className="p-2 -m-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <Menu size={24} className="text-gray-600 dark:text-gray-400"/>
+      </button>
+    </header>
   );
 }

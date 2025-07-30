@@ -3,8 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/src/assets/doctor-wht-bg.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MediMaven Ai</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#F36D5E" />
+    <meta name="description" content="MediMaven AI - Your personal medical AI assistant for health questions and guidance" />
+    <title>MediMaven AI - Medical Assistant</title>
+    <style>
+      /* Prevent FOUC and set initial styles */
+      html { 
+        background: #f9fafb;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        margin: 0;
+        overscroll-behavior: none;
+      }
+      /* Dark mode initial styles */
+      @media (prefers-color-scheme: dark) {
+        html { background: #111827; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

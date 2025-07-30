@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - HF_TOKEN=${HF_TOKEN}
       - WANDB_API_KEY=${WANDB_API_KEY:-}

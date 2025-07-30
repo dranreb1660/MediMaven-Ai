@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
 import ChatBubble from './ChatBubble';
 import type { Message } from '../../types/Types';
+import { useAutoScroll } from '../../hooks/useAutoScroll';
 
 export interface MessageListProps {
   messages: Message[];
@@ -13,12 +13,9 @@ export default function MessageList({
   isTyping,
   retry,
 }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  /* auto-scroll */
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  const bottomRef = useAutoScroll({
+    dependencies: [messages, isTyping]
+  });
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto px-0 sm:px-4">

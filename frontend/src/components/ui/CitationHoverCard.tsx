@@ -1,4 +1,5 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
+import { useState, useEffect } from 'react';
 
 interface CitationHoverCardProps {
   url: string;
@@ -19,37 +20,84 @@ export default function CitationHoverCard({
   source,
   children,
 }: CitationHoverCardProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const formattedTitle = formatUrlTitle(url);
+
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   const handleCardClick = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
+    setIsOpen(false);
+  };
+
+  // For desktop, handle hover
+  const handleOpenChange = (open: boolean) => {
+    if (!isTouchDevice) {
+      setIsOpen(open);
+    }
   };
 
   return (
-    <HoverCard.Root openDelay={150} closeDelay={150}>
+    <HoverCard.Root 
+      open={isOpen}
+      onOpenChange={handleOpenChange}
+      openDelay={150} 
+      closeDelay={150}
+    >
       <HoverCard.Trigger asChild>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs underline cursor-pointer text-mm-accent-600"
+        <button
+          type="button"
+          onClick={() => {
+            if (isTouchDevice) {
+              setIsOpen(prev => !prev);
+            }
+          }}
+          className="text-xs underline cursor-pointer text-mm-accent-600 dark:text-mm-accent-500 
+                     hover:text-mm-accent-700 dark:hover:text-mm-accent-400 transition-colors
+                     bg-transparent border-none p-0 m-0 font-inherit inline"
         >
           {children}
-        </a>
+        </button>
       </HoverCard.Trigger>
 
       <HoverCard.Portal>
         <HoverCard.Content
-          sideOffset={6}
+          sideOffset={8}
           align="center"
-          className="max-w-xs rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-xs text-gray-800 dark:text-gray-200 shadow-xl animate-fade-in cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-          onClick={handleCardClick}
+          className="max-w-xs rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 
+                     p-4 shadow-xl animate-fade-in z-50"
+          onInteractOutside={() => setIsOpen(false)}
         >
-          <strong className="text-sm font-medium">{formattedTitle} - <span className="text-mm-accent-600 dark:text-mm-accent-600">{source}</span></strong>
-          <p className="mt-1 text-[11px] text-gray-600 dark:text-gray-400">
-            Click to view detailed information from <strong>{source}</strong>.
-          </p>
-          <HoverCard.Arrow className="fill-current text-gray-200 dark:text-gray-700" />
+          <div 
+            onClick={handleCardClick}
+            onKeyDown={(e) => e.key === 'Enter' && handleCardClick()}
+            tabIndex={0}
+            role="button"
+            aria-label="Open citation source"
+            className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-750 -m-4 p-4 rounded-lg transition-colors">
+            <div className="flex items-start gap-2">
+              <svg className="w-4 h-4 text-mm-accent-600 dark:text-mm-accent-500 mt-0.5 flex-shrink-0" 
+                   fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                      d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <div className="flex-1">
+                <strong className="text-sm font-semibold text-gray-900 dark:text-white block">
+                  {formattedTitle}
+                </strong>
+                <span className="text-xs text-mm-accent-600 dark:text-mm-accent-500">
+                  {source}
+                </span>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+              {isTouchDevice ? 'Tap' : 'Click'} to view source
+            </p>
+          </div>
+          <HoverCard.Arrow className="fill-white dark:fill-gray-800" />
         </HoverCard.Content>
       </HoverCard.Portal>
     </HoverCard.Root>

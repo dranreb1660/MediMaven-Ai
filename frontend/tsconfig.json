@@ -14,7 +14,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["vitest/globals", "@testing-library/jest-dom", "cypress"]
   },
-  "include": ["src", "vite.config.ts", "tailwind.config.js"]
+  "include": ["src", "vite.config.ts", "tailwind.config.js", "vitest.config.ts", "tests/unit/**/*", "tests/setup.ts"],
+  "exclude": ["tests/e2e/**/*"]
 }

@@ -1,7 +1,6 @@
 // src/context/ThemeContext.tsx
-import { createContext, useState, useEffect } from 'react';
-
-export const ThemeCtx = createContext({ dark: false, toggle: () => {} });
+import { useState, useEffect } from 'react';
+import { ThemeCtx } from './theme-constants';
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [dark, setDark] = useState(() => localStorage.theme === 'dark');

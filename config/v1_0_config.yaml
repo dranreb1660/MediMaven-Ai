@@ -1,0 +1,140 @@
+# MediMaven v1.0 Configuration
+# Basic RAG system configuration
+
+version: "1.0"
+description: "MediMaven v1.0 - Basic RAG system with BM25 retrieval"
+
+# Data configuration
+data:
+  # Input data paths
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  embeddings_dir: "data/embeddings"
+  
+  # Data processing settings
+  chunk_size: 512
+  chunk_overlap: 50
+  max_chunk_length: 1024
+  
+  # Supported data formats
+  supported_formats: ["json", "jsonl", "csv", "txt"]
+
+# Retrieval configuration
+retrieval:
+  # Retrieval methods
+  methods: ["bm25"]
+  
+  # BM25 settings
+  bm25:
+    k1: 1.2
+    b: 0.75
+    
+  # Search parameters
+  max_results: 100
+  min_score_threshold: 0.1
+
+# Ranking configuration (basic)
+ranking:
+  method: "score_based"
+  max_rerank_candidates: 50
+  
+# Embedding configuration
+embeddings:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  model_type: "sentence_transformer"
+  embedding_dim: 384
+  batch_size: 32
+  device: "cpu"
+  normalize: true
+
+# Generation configuration
+generation:
+  # Model settings (placeholder for future LLM integration)
+  model_type: "placeholder"
+  model_name: "basic_generator"
+  
+  # Generation parameters
+  max_new_tokens: 512
+  temperature: 0.1
+  do_sample: false
+  
+  # Response formatting
+  include_sources: true
+  max_sources: 5
+
+# RAG pipeline configuration
+rag:
+  max_context_length: 2048
+  max_sources: 5
+  min_confidence_threshold: 0.3
+  
+  # Context management
+  deduplication_threshold: 0.8
+  source_diversity: true
+
+# Evaluation configuration
+evaluation:
+  metrics: ["relevance", "accuracy", "coverage"]
+  test_data_path: "data/test/test_queries.jsonl"
+  
+  # Evaluation thresholds
+  min_relevance_score: 0.6
+  min_accuracy_score: 0.7
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_file: "logs/medimaven_v1_0.log"
+  
+  # Component-specific logging
+  components:
+    retrieval: "INFO"
+    ranking: "INFO"
+    generation: "INFO"
+    pipeline: "INFO"
+
+# Performance configuration
+performance:
+  # Memory management
+  max_memory_usage: "4GB"
+  batch_processing: true
+  
+  # Caching
+  enable_caching: true
+  cache_dir: "cache/"
+  cache_ttl: 3600  # 1 hour
+  
+  # Parallel processing
+  num_workers: 2
+  use_multiprocessing: false
+
+# Output configuration
+output:
+  format: "json"
+  include_metadata: true
+  include_debug_info: false
+  
+  # Response structure
+  response_fields:
+    - "answer"
+    - "confidence"
+    - "sources"
+    - "metadata"
+
+# Model paths
+model_paths:
+  embeddings: "models/embeddings/"
+  retrieval: "models/retrieval/"
+  generation: "models/generation/"
+
+# Experiment tracking
+experiment:
+  name: "medimaven_v1_0_baseline"
+  description: "Baseline RAG system with BM25 retrieval"
+  tags: ["baseline", "bm25", "v1.0"]
+  
+  # Results tracking
+  results_dir: "results/v1_0/"
+  save_predictions: true
+  save_metrics: true
