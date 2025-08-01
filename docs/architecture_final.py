@@ -51,7 +51,7 @@ with Diagram("MediMaven Architecture", show=False, filename="docs/medimaven_arch
         alb = ELB("ALB")
         
         with Cluster("Auto Scaling"):
-            backend = EC2SpotInstance("Spot Instance\n(Docker)")
+            backend = EC2SpotInstance("Spot Instance\n(AWS EC2\nDocker)")
             fastapi = FastAPI("FastAPI")
             backend >> fastapi
     

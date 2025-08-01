@@ -2,7 +2,7 @@ name: MediMaven CI/CD
 
 on:
   push:
-    branches: [main, develop, 'feat/**']
+    branches: [main, develop]
     # Skip CI for documentation-only changes
     paths-ignore:
       - '**.md'
