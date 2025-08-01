@@ -1,7 +1,7 @@
 name: Deploy Frontend
 on:
   push:
-    branches: [main, test-deployment]  # Added test-deployment for testing
+    branches: [main]  # Added test-deployment for testing
   workflow_dispatch:  # Allow manual triggering
 
 env:
