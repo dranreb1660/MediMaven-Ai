@@ -16,6 +16,8 @@
 | :--- | :--- | :--- |
 | **Web Client** | [https://www.medimaven-ai.com](https://www.medimaven-ai.com) | React + Tailwind + Streamed tokens |
 | **Swagger UI** | [https://api.medimaven-ai.com/docs](https://api.medimaven-ai.com/docs) | FastAPI backend |
+
+
 ![demo](docs/medimaven_demo.gif)
 
 ## 📌 Key Features
